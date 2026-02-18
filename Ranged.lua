@@ -22,9 +22,12 @@ frame:SetScript("OnEvent", function(self, event)
     local _, sub, _, srcGUID = CombatLogGetCurrentEventInfo()
     if srcGUID ~= UnitGUID("player") then return end
 
-    if sub == "RANGE_DAMAGE" or sub == "RANGE_MISSED" then
-        local speed = UnitRangedDamage("player")
-        rangedBar.speed = speed
-        rangedBar.timer = speed
+    if sub == "SPELL_CAST_SUCCESS" then
+        local spellId = select(12, CombatLogGetCurrentEventInfo())
+        if spellId == 75 or spellId == 5019 or spellId == 3018 then
+            local speed = UnitRangedDamage("player")
+            rangedBar.speed = speed
+            rangedBar.timer = speed
+        end
     end
 end)
