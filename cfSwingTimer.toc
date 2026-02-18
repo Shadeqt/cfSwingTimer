@@ -1,0 +1,9 @@
+## Interface: 11504
+## Title: cfSwingTimer
+## Notes: Melee swing timer bars
+## Author: Claude
+## Version: 0.1
+
+Abilities.lua
+Melee.lua
+Ranged.lua
