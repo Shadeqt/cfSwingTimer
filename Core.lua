@@ -1,13 +1,14 @@
-local BAR_W, BAR_H = 195, 13
+local BAR_WIDTH, BAR_HEIGHT = 195, 13
 
 cfSwingTimer = {
-    BAR_W = BAR_W,
-    BAR_H = BAR_H,
+    BAR_WIDTH = BAR_WIDTH,
+    BAR_HEIGHT = BAR_HEIGHT,
+    playerGUID = UnitGUID("player"),
 }
 
 function cfSwingTimer.CreateSwingBar(parent, speed)
     local bar = CreateFrame("StatusBar", nil, parent)
-    bar:SetSize(BAR_W, BAR_H)
+    bar:SetSize(BAR_WIDTH, BAR_HEIGHT)
     bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     bar:SetStatusBarColor(1, 0.7, 0)
     bar:SetMinMaxValues(0, 1)
@@ -24,6 +25,7 @@ function cfSwingTimer.CreateSwingBar(parent, speed)
     bar.spark:SetSize(32, 32)
     bar.spark:SetBlendMode("ADD")
     bar.spark:SetPoint("CENTER", bar, "LEFT", 0, 0)
+    bar.spark:Hide()
 
     bar.border = bar:CreateTexture(nil, "OVERLAY")
     bar.border:SetTexture("Interface\\CastingBar\\UI-CastingBar-Border")
@@ -37,16 +39,32 @@ function cfSwingTimer.CreateSwingBar(parent, speed)
     return bar
 end
 
-function cfSwingTimer.UpdateBar(bar, elapsed)
-    if bar.timer > 0 then bar.timer = math.max(0, bar.timer - elapsed) end
-    local pct = 1 - bar.timer / bar.speed
-    bar:SetValue(pct)
-    if bar.timer > 0 then
+function cfSwingTimer.UpdateSwingBar(bar, progress, remaining)
+    bar:SetValue(progress)
+    if remaining > 0 then
         bar.spark:Show()
         bar.spark:ClearAllPoints()
-        bar.spark:SetPoint("CENTER", bar, "LEFT", pct * BAR_W, 0)
+        bar.spark:SetPoint("CENTER", bar, "LEFT", progress * BAR_WIDTH, 0)
+        bar.text:SetText(string.format("%.1f", remaining))
     else
         bar.spark:Hide()
+        bar.text:SetText("")
     end
-    bar.text:SetText(string.format("%.1f", bar.timer))
+end
+
+function cfSwingTimer.UpdateBar(bar, elapsed)
+    if bar.speed == 0 then return end
+    bar.timer = math.max(0, bar.timer - elapsed)
+    if bar.timer > 0 then
+        local progress = 1 - bar.timer / bar.speed
+        bar:SetValue(progress)
+        bar.spark:Show()
+        bar.spark:ClearAllPoints()
+        bar.spark:SetPoint("CENTER", bar, "LEFT", progress * BAR_WIDTH, 0)
+        bar.text:SetText(string.format("%.1f", bar.timer))
+    else
+        bar:SetValue(0)
+        bar.spark:Hide()
+        bar.text:SetText("")
+    end
 end

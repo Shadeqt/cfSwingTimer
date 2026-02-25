@@ -6,5 +6,9 @@
 
 Core.lua
 Abilities.lua
-Melee.lua
-Ranged.lua
+#Melee.lua
+#Ranged.lua
+#RangedV2.lua
+#RangedV3.lua
+MeleeSimple.lua
+RangedSimple.lua

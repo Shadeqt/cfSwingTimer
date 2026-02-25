@@ -44,6 +44,20 @@ cfSwingTimer_SwingReset = {
     [27014] = "Raptor Strike (Rank 9)", -- TBC
 }
 
+-- Ranged auto-attack spells tracked by the swing timer
+cfSwingTimer_RangedShot = {
+    [75]   = "Auto Shot",
+    [5019] = "Shoot (Wand)",
+    [3018] = "Shoot (Bow/Gun/Crossbow)",
+    [2764] = "Throw",
+}
+
+-- Subset that auto-repeats (cooldown = speed - castTime)
+cfSwingTimer_AutoRepeat = {
+    [75]   = "Auto Shot",
+    [5019] = "Shoot (Wand)",
+}
+
 -- Spells that pause the MH swing timer during cast
 cfSwingTimer_SlamPause = {
     -- Warrior: Slam
@@ -54,3 +68,29 @@ cfSwingTimer_SlamPause = {
     [25241] = "Slam (Rank 5)", -- TBC
     [25242] = "Slam (Rank 6)", -- TBC
 }
+
+-- TBC: Aimed Shot resets auto shot timer on cast start
+cfSwingTimer_AimedShot = {
+    [19434] = "Aimed Shot (Rank 1)",
+    [20900] = "Aimed Shot (Rank 2)",
+    [20901] = "Aimed Shot (Rank 3)",
+    [20902] = "Aimed Shot (Rank 4)",
+    [20903] = "Aimed Shot (Rank 5)",
+    [20904] = "Aimed Shot (Rank 6)",
+    [27065] = "Aimed Shot (Rank 7)",  -- TBC
+}
+
+-- Hunter shots that block auto-shot during cast (combined table)
+cfSwingTimer_HunterCast = {}
+for id, name in pairs(cfSwingTimer_AimedShot) do
+    cfSwingTimer_HunterCast[id] = name
+end
+-- Steady Shot
+cfSwingTimer_HunterCast[34120] = "Steady Shot"          -- TBC
+-- Multi-Shot
+cfSwingTimer_HunterCast[2643]  = "Multi-Shot (Rank 1)"
+cfSwingTimer_HunterCast[14288] = "Multi-Shot (Rank 2)"
+cfSwingTimer_HunterCast[14289] = "Multi-Shot (Rank 3)"
+cfSwingTimer_HunterCast[14290] = "Multi-Shot (Rank 4)"
+cfSwingTimer_HunterCast[25294] = "Multi-Shot (Rank 5)"  -- TBC
+cfSwingTimer_HunterCast[27021] = "Multi-Shot (Rank 6)"  -- TBC

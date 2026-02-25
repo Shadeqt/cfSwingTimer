@@ -62,9 +62,18 @@ local function ScaleBar(bar, newSpeed)
 end
 
 -- OnUpdate
+local function updateMelee(bar, dt)
+    if bar.speed == 0 then return end
+    bar.timer = math.max(0, bar.timer - dt)
+    local progress = bar.timer > 0 
+        and (1 - bar.timer / bar.speed) 
+        or 0
+    cfSwingTimer.UpdateSwingBar(bar, progress, bar.timer)
+end
+
 frame:SetScript("OnUpdate", function(self, elapsed)
-    cfSwingTimer.UpdateBar(mhBar, slamCasting and 0 or elapsed)
-    cfSwingTimer.UpdateBar(ohBar, elapsed)
+    updateMelee(mhBar, slamCasting and 0 or elapsed)
+    updateMelee(ohBar, elapsed)
 end)
 
 local function InitSpeeds()
