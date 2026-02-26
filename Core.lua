@@ -4,7 +4,41 @@ cfSwingTimer = {
     BAR_WIDTH = BAR_WIDTH,
     BAR_HEIGHT = BAR_HEIGHT,
     playerGUID = UnitGUID("player"),
+    debug = false,
 }
+
+function cfSwingTimer.dbg(...)
+    if cfSwingTimer.debug then print(...) end
+end
+
+SLASH_CFST1 = "/cfst"
+SlashCmdList["CFST"] = function()
+    cfSwingTimer.debug = not cfSwingTimer.debug
+    print("cfSwingTimer debug: " .. (cfSwingTimer.debug and "ON" or "OFF"))
+end
+
+-- Tooltip scanner: only way to get base (unhasted) weapon speed in Classic
+local tooltipScanner = CreateFrame("GameTooltip", "cfScanTip", nil, "GameTooltipTemplate")
+tooltipScanner:SetOwner(WorldFrame, "ANCHOR_NONE")
+local baseSpeedCache = {}
+
+function cfSwingTimer.GetBaseWeaponSpeed(inventorySlot)
+    local itemId = GetInventoryItemID("player", inventorySlot)
+    if not itemId then return nil end
+    if baseSpeedCache[itemId] then return baseSpeedCache[itemId] end
+    tooltipScanner:ClearLines()
+    tooltipScanner:SetInventoryItem("player", inventorySlot)
+    for i = 2, tooltipScanner:NumLines() do
+        local text = _G["cfScanTipTextRight" .. i]:GetText()
+        if text then
+            local speed = text:match("Speed (%d+%.%d+)")
+            if speed then
+                baseSpeedCache[itemId] = tonumber(speed)
+                return baseSpeedCache[itemId]
+            end
+        end
+    end
+end
 
 function cfSwingTimer.CreateSwingBar(parent, speed)
     local bar = CreateFrame("StatusBar", nil, parent)

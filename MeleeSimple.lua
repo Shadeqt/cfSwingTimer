@@ -49,14 +49,19 @@ end
 local function ResetSwingTimer(bar)
     if extraAttacks > 0 then
         extraAttacks = extraAttacks - 1
+        cfSwingTimer.dbg(string.format("[cfST-M] reset (extra) | T=%.2f extraLeft=%d", GetTime(), extraAttacks))
     else
         bar.timer = bar.speed
+        cfSwingTimer.dbg(string.format("[cfST-M] reset | T=%.2f speed=%.2f", GetTime(), bar.speed))
     end
 end
 
 local function ScaleBar(bar, newSpeed)
     if newSpeed ~= bar.speed and bar.timer > 0 then
+        local oldTimer = bar.timer
         bar.timer = bar.timer * (newSpeed / bar.speed)
+        cfSwingTimer.dbg(string.format("[cfST-M] scale | T=%.2f oldSpeed=%.2f newSpeed=%.2f oldTimer=%.2f newTimer=%.2f",
+            GetTime(), bar.speed, newSpeed, oldTimer, bar.timer))
     end
     bar.speed = newSpeed
 end
@@ -95,7 +100,12 @@ frame:SetScript("OnEvent", function(self, event, unit)
     end
 
     if event == "UNIT_ATTACK_SPEED" then
-        if unit == "player" then InitSpeeds() end
+        if unit == "player" then
+            local s1, s2 = UnitAttackSpeed("player")
+            cfSwingTimer.dbg(string.format("[cfST-M] UNIT_ATTACK_SPEED | T=%.2f mhSpeed=%.2f mhTimer=%.2f",
+                GetTime(), s1 or 0, mhBar.timer))
+            InitSpeeds()
+        end
         return
     end
 
@@ -122,9 +132,11 @@ frame:SetScript("OnEvent", function(self, event, unit)
     end
 
     -- pos 12 is missType for SWING_MISSED (spellId for SPELL_* events)
-    if destGUID == playerGUID and sub == "SWING_MISSED" and spellId == "PARRY" then
+    if destGUID == playerGUID and sub == "SWING_MISSED" and spellId == "PARRY" and mhBar.timer > 0 then
         local reduction = mhBar.speed * 0.4
         local floor = mhBar.speed * 0.2
+        local oldTimer = mhBar.timer
         mhBar.timer = math.max(floor, mhBar.timer - reduction)
+        cfSwingTimer.dbg(string.format("[cfST-M] parry haste | T=%.2f oldTimer=%.2f newTimer=%.2f", GetTime(), oldTimer, mhBar.timer))
     end
 end)
