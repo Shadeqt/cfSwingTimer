@@ -1,5 +1,5 @@
 -- RangedSimple.lua — Minimal ranged swing timer
--- SHOOT (blue, L→R) + CAST (orange, L→R) + RELOAD (white, R→L)
+-- SHOOT (blue, L→R) + RELOAD (white, R→L)
 
 local BAR_WIDTH = cfSwingTimer.BAR_WIDTH
 local BAR_HEIGHT = cfSwingTimer.BAR_HEIGHT
@@ -9,7 +9,6 @@ local RANGED_INVENTORY_SLOT = 18
 
 local Color = {
     SHOOT  = { 0, 0.5, 1 },
-    CAST   = { 1, 0.7, 0 },
     RELOAD = { 1, 1, 1 },
 }
 
@@ -17,7 +16,6 @@ local State = {
     IDLE = 0,
     SHOOT = 1,
     RELOAD = 2,
-    CAST = 3,
 }
 
 local state = State.IDLE
@@ -39,26 +37,37 @@ local function ResetSwingBar(reason)
     cfSwingTimer.dbg("[cfST-S] reset: " .. reason)
 end
 
+local function ApplyStateColor()
+    if state == State.SHOOT then
+        bar:SetStatusBarColor(unpack(Color.SHOOT))
+    elseif state == State.RELOAD then
+        bar:SetStatusBarColor(unpack(Color.RELOAD))
+    end
+end
+
 -- OnUpdate
 frame:SetScript("OnUpdate", function()
+    local now = GetTime()
+    local moving = GetUnitSpeed("player") > 0
+
+    -- Movement resets SHOOT but not RELOAD
+    if moving and state == State.SHOOT then
+        ResetSwingBar("movement during SHOOT")
+        return
+    end
+    -- Nothing to render
     if state == State.IDLE then return end
 
-    local elapsed = GetTime() - stateStart
+    local elapsed = now - stateStart
     local remaining = math.max(0, stateDuration - elapsed)
-
-    if state == State.SHOOT or state == State.CAST then
-        if GetUnitSpeed("player") > 0 then
-            ResetSwingBar("movement during " .. (state == State.SHOOT and "SHOOT" or "CAST"))
-            return
-        end
-        local progress = math.min(1, elapsed / stateDuration)
+    if state == State.SHOOT then
+        local progress = elapsed / stateDuration
         cfSwingTimer.UpdateSwingBar(bar, progress, remaining)
     elseif state == State.RELOAD then
-        local progress = remaining / stateDuration
+        local progress = 1 - elapsed / stateDuration
         cfSwingTimer.UpdateSwingBar(bar, progress, remaining)
     end
-
-    if remaining <= 0 then state = State.IDLE end
+    if elapsed >= stateDuration then state = State.IDLE end
 end)
 
 local function GetShootDuration(spellId)
@@ -77,31 +86,20 @@ local function GetReloadDuration(spellId)
 end
 
 local function StartShoot(spellId)
-    stateStart = GetTime()
     stateDuration = GetShootDuration(spellId)
+    stateStart = GetTime()
     lastShootStateDuration = stateDuration
     state = State.SHOOT
-    bar:SetStatusBarColor(unpack(Color.SHOOT))
+    ApplyStateColor()
     cfSwingTimer.dbg(string.format("[cfST-S] shoot | T=%.2f spellId=%d duration=%.2f",
         GetTime(), spellId, stateDuration))
 end
 
-local function StartCast(spellId)
-    local _, _, _, castTimeMs = GetSpellInfo(spellId)
-    if not castTimeMs or castTimeMs == 0 then return end
-    stateStart = GetTime()
-    stateDuration = castTimeMs / 1000
-    state = State.CAST
-    bar:SetStatusBarColor(unpack(Color.CAST))
-    cfSwingTimer.dbg(string.format("[cfST-S] cast | T=%.2f spellId=%d duration=%.2f",
-        GetTime(), spellId, stateDuration))
-end
-
 local function StartReload(spellId)
-    stateStart = GetTime()
     stateDuration = GetReloadDuration(spellId)
+    stateStart = GetTime()
     state = State.RELOAD
-    bar:SetStatusBarColor(unpack(Color.RELOAD))
+    ApplyStateColor()
     cfSwingTimer.dbg(string.format("[cfST-S] reload | T=%.2f duration=%.2f",
         GetTime(), stateDuration))
 end
@@ -113,42 +111,27 @@ frame:RegisterEvent("UNIT_SPELLCAST_FAILED")
 frame:RegisterEvent("UNIT_SPELLCAST_FAILED_QUIET")
 
 frame:SetScript("OnEvent", function(self, event, unit, _, spellId)
-    if event == "UNIT_SPELLCAST_FAILED" and unit == "player" then
-        if cfSwingTimer_RangedShot[spellId] then
-            ResetSwingBar(string.format("FAILED spellId=%d state=%d", spellId, state))
-        end
-        return
-    end
+    -- Unit events
+    if event ~= "COMBAT_LOG_EVENT_UNFILTERED" then
+        if unit ~= "player" then return end
+        if not cfSwingTimer_RangedShot[spellId] then return end
 
-    if event == "UNIT_SPELLCAST_FAILED_QUIET" and unit == "player" then
-        if cfSwingTimer_RangedShot[spellId] then
+        if event == "UNIT_SPELLCAST_SUCCEEDED" then
+            StartReload(spellId)
+        elseif event == "UNIT_SPELLCAST_FAILED" then
+            ResetSwingBar(string.format("FAILED spellId=%d state=%d", spellId, state))
+        elseif event == "UNIT_SPELLCAST_FAILED_QUIET" then
             cfSwingTimer.dbg(string.format("[cfST-S] FAILED_QUIET | T=%.2f spellId=%d state=%d",
                 GetTime(), spellId, state))
         end
         return
     end
 
-    if event == "UNIT_SPELLCAST_SUCCEEDED" and unit == "player" then
-        if cfSwingTimer_RangedShot[spellId] then
-            StartReload(spellId)
-        end
-        return
-    end
-
+    -- CLEU (only for SPELL_CAST_START)
     local _, sub, _, src, _, _, _, _, _, _, _, cleuSpellId = CombatLogGetCurrentEventInfo()
-    if src ~= playerGUID then return end
+    if src ~= playerGUID or sub ~= "SPELL_CAST_START" then return end
 
-    if sub == "SPELL_CAST_START" then
-        if cfSwingTimer_RangedShot[cleuSpellId] then
-            StartShoot(cleuSpellId)
-        elseif cfSwingTimer_HunterCast[cleuSpellId] then
-            StartCast(cleuSpellId)
-        end
-    elseif cfSwingTimer_HunterCast[cleuSpellId] then
-        if sub == "SPELL_CAST_SUCCESS"
-            or sub == "SPELL_CAST_FAILED"
-            or sub == "SPELL_CAST_INTERRUPTED" then
-            ResetSwingBar("cast end: " .. sub)
-        end
+    if cfSwingTimer_RangedShot[cleuSpellId] then
+        StartShoot(cleuSpellId)
     end
 end)
