@@ -89,16 +89,6 @@ end
 function cfSwingTimer.UpdateBar(bar, elapsed)
     if bar.speed == 0 then return end
     bar.timer = math.max(0, bar.timer - elapsed)
-    if bar.timer > 0 then
-        local progress = 1 - bar.timer / bar.speed
-        bar:SetValue(progress)
-        bar.spark:Show()
-        bar.spark:ClearAllPoints()
-        bar.spark:SetPoint("CENTER", bar, "LEFT", progress * BAR_WIDTH, 0)
-        bar.text:SetText(string.format("%.1f", bar.timer))
-    else
-        bar:SetValue(0)
-        bar.spark:Hide()
-        bar.text:SetText("")
-    end
+    local progress = bar.timer > 0 and (1 - bar.timer / bar.speed) or 0
+    cfSwingTimer.UpdateSwingBar(bar, progress, bar.timer)
 end

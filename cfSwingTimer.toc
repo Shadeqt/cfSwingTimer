@@ -11,4 +11,6 @@ Abilities.lua
 #RangedV2.lua
 #RangedV3.lua
 MeleeSimple.lua
+MeleePaladin.lua
+MeleeWarrior.lua
 RangedSimple.lua
