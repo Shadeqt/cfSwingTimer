@@ -1,17 +1,14 @@
--- RangedSimple.lua — Minimal ranged swing timer
--- SHOOT (blue, L→R) + CAST (orange, L→R) + RELOAD (white, R→L)
 function cfSwingTimer.initRanged()
 	local M = cfSwingTimer.MODULE
-	local BAR_WIDTH = cfSwingTimer.BAR_WIDTH
-	local BAR_HEIGHT = cfSwingTimer.BAR_HEIGHT
 	local playerGUID = cfSwingTimer.playerGUID
 
 	local RANGED_INVENTORY_SLOT = 18
 
 	local Color = {
-		SHOOT  = { 0, 0.5, 1 },
-		CAST   = { 1, 0.7, 0 },
-		RELOAD = { 1, 1, 1 },
+		SHOOT  = cfSwingTimer.CLASS_COLORS.DEMONHUNTER,
+		CAST   = cfSwingTimer.CASTBAR_COLORS.CASTING,
+		RELOAD = cfSwingTimer.CLASS_COLORS.PRIEST,
+		RETRY  = cfSwingTimer.CASTBAR_COLORS.FAILED,
 	}
 
 	local State = {
@@ -29,23 +26,34 @@ function cfSwingTimer.initRanged()
 	local castStart = 0
 	local castDuration = 0
 
-	-- Error tracking for debug
-	local lastUIError = ""
-	local lastUIErrorTime = 0
+	-- Retry underlay (independent of state machine, like cast overlay)
+	local retryStart = 0
+	local retryDuration = 0.5
 
 	-- Frame + bar
 	local frame = CreateFrame("Frame", "cfSwingTimerRangedSimple", UIParent)
 	frame:SetPoint("CENTER", 0, -200)
-	frame:SetSize(BAR_WIDTH, BAR_HEIGHT)
+	frame:SetSize(cfSwingTimer.BAR_WIDTH, cfSwingTimer.BAR_HEIGHT)
 
-	local swingBar = cfSwingTimer.CreateSwingBar(frame)
+	local swingBar = cfSwingTimer.CreateCenterSwingBar(frame)
 	swingBar:SetPoint("TOP")
 	cfSwingTimer.bars[M.RANGED] = swingBar
 
-	local function ResetSwingBar(reason)
+	local function ResetSwingBar()
 		state = State.IDLE
 		cfSwingTimer.UpdateSwingBar(swingBar, 0, 0)
-		cfSwingTimer.dbg("[cfST-S] reset: " .. reason)
+	end
+
+	local function RenderRetry(now)
+		if retryStart == 0 then return end
+		local elapsed = now - retryStart
+		if elapsed < retryDuration then
+			swingBar:SetStatusBarColor(unpack(Color.RETRY))
+			cfSwingTimer.UpdateSwingBar(swingBar, 1 - elapsed / retryDuration, retryDuration - elapsed)
+		else
+			retryStart = 0
+			cfSwingTimer.UpdateSwingBar(swingBar, 0, 0)
+		end
 	end
 
 	local function ApplyStateColor()
@@ -56,10 +64,9 @@ function cfSwingTimer.initRanged()
 		end
 	end
 
-	local function StopCast(reason)
+	local function StopCast()
 		castStart = 0
 		ApplyStateColor()
-		cfSwingTimer.dbg("[cfST-S] cast end: " .. reason)
 	end
 
 	-- OnUpdate
@@ -70,8 +77,9 @@ function cfSwingTimer.initRanged()
 
 		-- Movement resets SHOOT and casting, but not RELOAD
 		if isMoving and state ~= State.RELOAD then
-			if castStart > 0 then StopCast("movement") end
-			if state == State.SHOOT then ResetSwingBar("movement during SHOOT") end
+			if castStart > 0 then StopCast() end
+			if state == State.SHOOT then ResetSwingBar() end
+			RenderRetry(now)
 			return
 		end
 
@@ -83,8 +91,8 @@ function cfSwingTimer.initRanged()
 			return
 		end
 
-		-- Nothing to render
-		if state == State.IDLE then return end
+		-- Nothing to render (retry shows in idle gaps)
+		if state == State.IDLE then RenderRetry(now) return end
 
 		-- Auto shot state (shoot / reload)
 		local elapsed = now - stateStart
@@ -102,7 +110,7 @@ function cfSwingTimer.initRanged()
 		end
 		if elapsed >= stateDuration then
 			if state == State.SHOOT and isCasting then
-				ResetSwingBar("casting during SHOOT")
+				ResetSwingBar()
 			else
 				state = State.IDLE
 			end
@@ -112,17 +120,16 @@ function cfSwingTimer.initRanged()
 	local function StartCast(spellId)
 		local _, _, _, castTimeMs = GetSpellInfo(spellId)
 		if not castTimeMs or castTimeMs == 0 then return end
-		if state == State.SHOOT then ResetSwingBar("cast interrupts shoot") end
+		if state == State.SHOOT then ResetSwingBar() end
 		castDuration = castTimeMs / 1000
 		castStart = GetTime()
 		swingBar:SetStatusBarColor(unpack(Color.CAST))
-		cfSwingTimer.dbg(("[cfST-S] cast | T=%.2f id=%d dur=%.2f"):format(GetTime(), spellId, castDuration))
 	end
 
 	local function GetShootDuration(spellId)
 		local rangedSpeed = UnitRangedDamage("player")
 		local _, _, _, baseShootMs = GetSpellInfo(spellId)
-		local baseShootTime = (baseShootMs or 500) / 1000
+		local baseShootTime = ((baseShootMs or 0) > 0 and baseShootMs or 500) / 1000
 		local baseSpeed = cfSwingTimer.GetBaseWeaponSpeed(RANGED_INVENTORY_SLOT)
 		if not baseSpeed then return baseShootTime end
 		return baseShootTime * rangedSpeed / baseSpeed
@@ -134,7 +141,6 @@ function cfSwingTimer.initRanged()
 		lastShootDuration = stateDuration
 		state = State.SHOOT
 		ApplyStateColor()
-		cfSwingTimer.dbg(("[cfST-S] shoot | T=%.2f id=%d dur=%.2f"):format(GetTime(), spellId, stateDuration))
 	end
 
 	local function GetReloadDuration(spellId)
@@ -148,7 +154,6 @@ function cfSwingTimer.initRanged()
 		stateStart = GetTime()
 		state = State.RELOAD
 		ApplyStateColor()
-		cfSwingTimer.dbg(("[cfST-S] reload | T=%.2f dur=%.2f"):format(GetTime(), stateDuration))
 	end
 
 	-- Events
@@ -157,21 +162,14 @@ function cfSwingTimer.initRanged()
 	frame:RegisterEvent("UNIT_SPELLCAST_FAILED")
 	frame:RegisterEvent("UNIT_SPELLCAST_FAILED_QUIET")
 	frame:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
-	frame:RegisterEvent("UI_ERROR_MESSAGE")
 	frame:RegisterEvent("STOP_AUTOREPEAT_SPELL")
 
 	frame:SetScript("OnEvent", function(self, event, ...)
 		-- Auto Shot toggled off
 		if event == "STOP_AUTOREPEAT_SPELL" then
-			if state == State.SHOOT then ResetSwingBar("STOP_AUTOREPEAT") end
-			return
-		end
-
-		-- UI error capture (fires before FAILED events with actual server reason)
-		if event == "UI_ERROR_MESSAGE" then
-			local _, msg = ...
-			lastUIError = msg
-			lastUIErrorTime = GetTime()
+			retryStart = 0
+			cfSwingTimer.UpdateSwingBar(swingBar, 0, 0)
+			if state == State.SHOOT then ResetSwingBar() end
 			return
 		end
 
@@ -195,23 +193,21 @@ function cfSwingTimer.initRanged()
 			if cfSwingTimer_RangedAttack[spellId] then
 				StartReload(spellId)
 			elseif cfSwingTimer_HunterCast[spellId] then
-				StopCast(event)
+				StopCast()
 			end
 		elseif event == "UNIT_SPELLCAST_FAILED" then
 			if cfSwingTimer_RangedAttack[spellId] then
-				local err = (GetTime() - lastUIErrorTime < 0.2) and lastUIError or "silent"
-			ResetSwingBar(("FAILED spellId=%d state=%d err=\"%s\""):format(spellId, state, err))
+				ResetSwingBar()
 			elseif cfSwingTimer_HunterCast[spellId] then
-				StopCast(event)
+				StopCast()
 			end
 		elseif event == "UNIT_SPELLCAST_INTERRUPTED" then
 			if cfSwingTimer_HunterCast[spellId] then
-				StopCast(event)
+				StopCast()
 			end
 		elseif event == "UNIT_SPELLCAST_FAILED_QUIET" then
 			if cfSwingTimer_RangedAttack[spellId] then
-				local err = (GetTime() - lastUIErrorTime < 0.2) and lastUIError or "silent"
-			cfSwingTimer.dbg(("[cfST-S] FAILED_QUIET | T=%.2f id=%d state=%d err=\"%s\""):format(GetTime(), spellId, state, err))
+				retryStart = GetTime()
 			end
 		end
 	end)

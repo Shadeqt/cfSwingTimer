@@ -7,7 +7,7 @@ function cfSwingTimer.initMeleeWarrior()
 	local mainHandBar = cfSwingTimer.mainHandBar
 
 	local Color = {
-		DEFAULT       = { 1, 0.7, 0 },
+		DEFAULT       = cfSwingTimer.CASTBAR_COLORS.CASTING,
 		HEROIC_STRIKE = { 0.9, 0.6, 0.1 },
 		CLEAVE        = { 0.1, 0.8, 0.2 },
 	}

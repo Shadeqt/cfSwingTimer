@@ -22,4 +22,23 @@ function addon.ApplyDarkMode()
 			bar.border:SetVertexColor(c, c, c)
 		end
 	end
+
+	-- Dark mode for experience/reputation bar border art
+	if bbfDB.darkModeActionBars and MainStatusTrackingBarContainer then
+		local actionBarColor = c + 0.25
+		if c == 0 then actionBarColor = 0 end
+		for i = 1, MainStatusTrackingBarContainer:GetNumRegions() do
+			local region = select(i, MainStatusTrackingBarContainer:GetRegions())
+			if region and region:IsObjectType("Texture") then
+				region:SetDesaturated(true)
+				region:SetVertexColor(actionBarColor, actionBarColor, actionBarColor)
+			end
+		end
+	end
+
+	-- Dark mode for minimap top border (zone text area)
+	if bbfDB.darkModeMinimap and MinimapCluster and MinimapCluster.BorderTop then
+		MinimapCluster.BorderTop:SetDesaturated(true)
+		MinimapCluster.BorderTop:SetVertexColor(c, c, c)
+	end
 end
