@@ -1,10 +1,11 @@
 -- MeleeWarrior.lua — Slam pause + Heroic Strike/Cleave queue coloring
 function cfSwingTimer.initMeleeWarrior()
 	if select(2, UnitClass("player")) ~= "WARRIOR" then return end
-	if not cfSwingTimer.mainHandBar then return end
+	local M = cfSwingTimer.MODULE
+	local mainHandBar = cfSwingTimer.bars[M.MAINHAND]
+	if not mainHandBar then return end
 
 	local playerGUID = cfSwingTimer.playerGUID
-	local mainHandBar = cfSwingTimer.mainHandBar
 
 	local Color = {
 		DEFAULT       = cfSwingTimer.CASTBAR_COLORS.CASTING,

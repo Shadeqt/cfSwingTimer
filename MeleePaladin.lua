@@ -1,9 +1,9 @@
 -- MeleePaladin.lua — Seal twist markers on main hand bar
 function cfSwingTimer.initMeleePaladin()
 	if select(2, UnitClass("player")) ~= "PALADIN" then return end
-	if not cfSwingTimer.mainHandBar then return end
-
-	local mainHandBar = cfSwingTimer.mainHandBar
+	local M = cfSwingTimer.MODULE
+	local mainHandBar = cfSwingTimer.bars[M.MAINHAND]
+	if not mainHandBar then return end
 	local TWIST_WINDOW = 0.4
 	local GCD = 1.5
 

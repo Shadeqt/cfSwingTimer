@@ -7,8 +7,10 @@ Core.lua
 ExternalAddons.lua
 Init.lua
 Abilities.lua
-Melee.lua
+#Melee.lua
+Melee_v2.lua
 MeleePaladin.lua
 MeleeWarrior.lua
 MeleeShaman.lua
-Ranged.lua
+#Ranged.lua
+Ranged_v2.lua

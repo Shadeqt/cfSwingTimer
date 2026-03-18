@@ -139,7 +139,12 @@ function cfSwingTimer.CreateCenterSwingBar(parent, speed)
     frame.rightBar:SetSize(halfWidth, BAR_HEIGHT)
     frame.rightBar:SetPoint("LEFT", frame, "CENTER", 0, 0)
 
-    -- Raised frame so border/text draw above child StatusBars
+    -- Mid-level frame for overlays (above bars, below border)
+    frame.overlayMid = CreateFrame("Frame", nil, frame)
+    frame.overlayMid:SetAllPoints()
+    frame.overlayMid:SetFrameLevel(frame:GetFrameLevel() + 5)
+
+    -- Raised frame so border/text draw above everything
     local overlayFrame = CreateFrame("Frame", nil, frame)
     overlayFrame:SetAllPoints()
     overlayFrame:SetFrameLevel(frame:GetFrameLevel() + 10)
@@ -154,6 +159,26 @@ function cfSwingTimer.CreateCenterSwingBar(parent, speed)
 
     frame.isCenter = true
     return frame
+end
+
+function cfSwingTimer.CreateBarFrame(moduleKey, y)
+    local frame = CreateFrame("Frame", "cfSwingTimer_" .. moduleKey, UIParent)
+    frame:SetPoint("CENTER", 0, y)
+    frame:SetSize(cfSwingTimer.BAR_WIDTH, cfSwingTimer.BAR_HEIGHT)
+    local bar = cfSwingTimer.CreateSwingBar(frame)
+    bar:SetPoint("TOP")
+    cfSwingTimer.bars[moduleKey] = bar
+    return frame, bar
+end
+
+function cfSwingTimer.CreateCenterBarFrame(moduleKey, y)
+    local frame = CreateFrame("Frame", "cfSwingTimer_" .. moduleKey, UIParent)
+    frame:SetPoint("CENTER", 0, y)
+    frame:SetSize(cfSwingTimer.BAR_WIDTH, cfSwingTimer.BAR_HEIGHT)
+    local bar = cfSwingTimer.CreateCenterSwingBar(frame)
+    bar:SetPoint("TOP")
+    cfSwingTimer.bars[moduleKey] = bar
+    return frame, bar
 end
 
 function cfSwingTimer.UpdateSwingBar(bar, progress, remaining)

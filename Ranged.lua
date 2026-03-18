@@ -39,9 +39,73 @@ function cfSwingTimer.initRanged()
 	swingBar:SetPoint("TOP")
 	cfSwingTimer.bars[M.RANGED] = swingBar
 
+	local function GetShootDuration(spellId)
+		local rangedSpeed = UnitRangedDamage("player")
+		local _, _, _, baseShootMs = GetSpellInfo(spellId)
+		local baseShootTime = ((baseShootMs or 0) > 0 and baseShootMs or 500) / 1000
+		local baseSpeed = cfSwingTimer.GetBaseWeaponSpeed(RANGED_INVENTORY_SLOT)
+		if not baseSpeed then return baseShootTime end
+		return baseShootTime * rangedSpeed / baseSpeed
+	end
+
+	-- Clip zone overlay: shows when casting would delay the next auto shot
+	local clipZones = {}
+	local barWidth = cfSwingTimer.BAR_WIDTH
+	local barHeight = cfSwingTimer.BAR_HEIGHT
+
+	if swingBar.isCenter then
+		local left = swingBar.overlayMid:CreateTexture(nil, "OVERLAY")
+		left:SetColorTexture(1, 0, 0, 0.3)
+		left:SetPoint("LEFT", swingBar, "CENTER", 0, 0)
+		left:Hide()
+		local right = swingBar.overlayMid:CreateTexture(nil, "OVERLAY")
+		right:SetColorTexture(1, 0, 0, 0.3)
+		right:SetPoint("RIGHT", swingBar, "CENTER", 0, 0)
+		right:Hide()
+		clipZones = { left, right }
+	else
+		local clip = swingBar:CreateTexture(nil, "OVERLAY")
+		clip:SetColorTexture(1, 0, 0, 0.3)
+		clip:SetPoint("RIGHT", swingBar, "RIGHT", 0, 0)
+		clip:Hide()
+		clipZones = { clip }
+	end
+
+	local function HideClipZone()
+		for _, tex in ipairs(clipZones) do tex:Hide() end
+	end
+
+	local function ShowClipZone(reloadDuration)
+		local castDur = GetShootDuration(75)
+		if not castDur or reloadDuration == 0 then
+			HideClipZone()
+			return
+		end
+		local fraction = castDur / reloadDuration
+		local maxWidth = swingBar.isCenter and (barWidth / 2) or barWidth
+		local clipWidth = math.min(fraction * maxWidth, maxWidth)
+		for _, tex in ipairs(clipZones) do
+			tex:SetSize(clipWidth, barHeight)
+			tex:Show()
+		end
+	end
+
+	local function ApplyStateColor()
+		if state == State.SHOOT then
+			swingBar:SetStatusBarColor(unpack(Color.SHOOT))
+			HideClipZone()
+		elseif state == State.RELOAD then
+			swingBar:SetStatusBarColor(unpack(Color.RELOAD))
+			ShowClipZone(stateDuration)
+		else
+			HideClipZone()
+		end
+	end
+
 	local function ResetSwingBar()
 		state = State.IDLE
 		cfSwingTimer.UpdateSwingBar(swingBar, 0, 0)
+		ApplyStateColor()
 	end
 
 	local function RenderRetry(now)
@@ -53,14 +117,6 @@ function cfSwingTimer.initRanged()
 		else
 			retryStart = 0
 			cfSwingTimer.UpdateSwingBar(swingBar, 0, 0)
-		end
-	end
-
-	local function ApplyStateColor()
-		if state == State.SHOOT then
-			swingBar:SetStatusBarColor(unpack(Color.SHOOT))
-		elseif state == State.RELOAD then
-			swingBar:SetStatusBarColor(unpack(Color.RELOAD))
 		end
 	end
 
@@ -113,27 +169,10 @@ function cfSwingTimer.initRanged()
 				ResetSwingBar()
 			else
 				state = State.IDLE
+				ApplyStateColor()
 			end
 		end
 	end)
-
-	local function StartCast(spellId)
-		local _, _, _, castTimeMs = GetSpellInfo(spellId)
-		if not castTimeMs or castTimeMs == 0 then return end
-		if state == State.SHOOT then ResetSwingBar() end
-		castDuration = castTimeMs / 1000
-		castStart = GetTime()
-		swingBar:SetStatusBarColor(unpack(Color.CAST))
-	end
-
-	local function GetShootDuration(spellId)
-		local rangedSpeed = UnitRangedDamage("player")
-		local _, _, _, baseShootMs = GetSpellInfo(spellId)
-		local baseShootTime = ((baseShootMs or 0) > 0 and baseShootMs or 500) / 1000
-		local baseSpeed = cfSwingTimer.GetBaseWeaponSpeed(RANGED_INVENTORY_SLOT)
-		if not baseSpeed then return baseShootTime end
-		return baseShootTime * rangedSpeed / baseSpeed
-	end
 
 	local function StartShoot(spellId)
 		stateDuration = GetShootDuration(spellId)
@@ -141,6 +180,16 @@ function cfSwingTimer.initRanged()
 		lastShootDuration = stateDuration
 		state = State.SHOOT
 		ApplyStateColor()
+	end
+
+	local function StartCast(spellId)
+		local _, _, _, castTimeMs = GetSpellInfo(spellId)
+		castDuration = (castTimeMs and castTimeMs > 0) and (castTimeMs / 1000) or GetShootDuration(spellId)
+		if not castDuration or castDuration == 0 then return end
+		if state == State.SHOOT then ResetSwingBar() end
+		castStart = GetTime()
+		swingBar:SetStatusBarColor(unpack(Color.CAST))
+		HideClipZone()
 	end
 
 	local function GetReloadDuration(spellId)

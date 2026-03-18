@@ -1,10 +1,11 @@
 -- MeleeShaman.lua — 50% swing marker on main hand and off-hand bars
 function cfSwingTimer.initMeleeShaman()
 	if select(2, UnitClass("player")) ~= "SHAMAN" then return end
-	if not cfSwingTimer.mainHandBar then return end
+	local M = cfSwingTimer.MODULE
+	local mainHandBar = cfSwingTimer.bars[M.MAINHAND]
+	if not mainHandBar then return end
 
-	local mainHandBar = cfSwingTimer.mainHandBar
-	local offHandBar = cfSwingTimer.offHandBar
+	local offHandBar = cfSwingTimer.bars[M.OFFHAND]
 
 	local Color = {
 		HALF = { 1, 1, 1, 0.8 },
