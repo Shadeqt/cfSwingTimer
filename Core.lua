@@ -108,8 +108,6 @@ local function CreateStatusBar(parent, texture, color)
     return bar
 end
 
-local DEFAULT_COLOR = CASTBAR_COLORS.CASTING
-
 local function AddClipZone(bar)
     local clip = bar:CreateTexture(nil, "OVERLAY")
     clip:SetColorTexture(1, 0, 0, 0.3)
@@ -141,7 +139,7 @@ end
 
 function cfSwingTimer.CreateSwingBar(parent, speed, clipZone)
     local texture = cfSwingTimer.GetBarTexture()
-    local bar = CreateStatusBar(parent, texture, DEFAULT_COLOR)
+    local bar = CreateStatusBar(parent, texture, {1, 1, 1})
     bar:SetSize(BAR_WIDTH, BAR_HEIGHT)
     bar.timer = 0
     bar.speed = speed or 0
@@ -176,7 +174,7 @@ function cfSwingTimer.CreateCenterSwingBar(parent, speed, clipZone)
     frame.bar:SetHeight(BAR_HEIGHT)
     frame.bar:SetWidth(0.001)
     frame.bar:SetPoint("BOTTOM", 0, 0)
-    frame.bar:SetVertexColor(unpack(DEFAULT_COLOR))
+    frame.bar:SetVertexColor(unpack({1, 1, 1}))
 
     if clipZone then AddCenterClipZone(frame) end
 

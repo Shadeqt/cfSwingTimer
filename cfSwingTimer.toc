@@ -4,7 +4,7 @@
 ## Author: Claude
 ## Version: 0.1
 Core.lua
-ExternalAddons.lua
+BetterBlizzFramesIntegration\BarTexture.lua
 Init.lua
 Abilities.lua
 #Melee.lua
