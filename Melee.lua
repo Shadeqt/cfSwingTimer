@@ -1,121 +1,126 @@
+local SWING_DAMAGE_OFFHAND_INDEX = 21
+local SWING_MISSED_OFFHAND_INDEX = 13
+local EXTRA_ATTACKS_AMOUNT_INDEX = 15
+
 function cfSwingTimer.initMelee()
-	local M = cfSwingTimer.MODULE
+	local MODULE = cfSwingTimer.MODULE
 	local playerGUID = cfSwingTimer.playerGUID
-	local extraAttacks = 0
 
 	-- Frame + bars
-	local frame = CreateFrame("Frame", "cfSwingTimerFrame", UIParent)
-	frame:SetPoint("CENTER", 0, -150)
-	frame:SetSize(cfSwingTimer.BAR_WIDTH, cfSwingTimer.BAR_HEIGHT)
+	local mhFrame, mhBar = cfSwingTimer.CreateBarFrame(MODULE.MAINHAND, -150)
+	mhBar:SetStatusBarColor(unpack(cfSwingTimer.CLASS_COLORS.SHAMAN))
 
-	local mainHandBar = cfSwingTimer.CreateSwingBar(frame, 2)
-	mainHandBar:SetPoint("TOP")
+	local ohFrame, ohBar = cfSwingTimer.CreateBarFrame(MODULE.OFFHAND)
+	ohFrame:SetPoint("TOP", mhFrame, "BOTTOM", 0, -cfSwingTimer.BAR_SPACING)
+	ohBar:SetStatusBarColor(unpack(cfSwingTimer.CLASS_COLORS.MAGE))
+	ohBar:Hide()
 
-	local offHandBar
-	do
-		local ohFrame = CreateFrame("Frame", "cfSwingTimerOHFrame", UIParent)
-		ohFrame:SetPoint("CENTER", 0, -175)
-		ohFrame:SetSize(cfSwingTimer.BAR_WIDTH, cfSwingTimer.BAR_HEIGHT)
+	-- Swing state
+	cfSwingTimer.mhSwingStart = 0
+	local ohSwingStart = 0
+	cfSwingTimer.mhSpeed = 0
+	local ohSpeed = 0
+	local extraAttacks = 0
 
-		offHandBar = cfSwingTimer.CreateSwingBar(ohFrame)
-		offHandBar:SetPoint("TOP")
-		offHandBar:Hide()
-	end
-
-	mainHandBar:SetStatusBarColor(unpack(cfSwingTimer.CLASS_COLORS.SHAMAN))
-	offHandBar:SetStatusBarColor(unpack(cfSwingTimer.CLASS_COLORS.MAGE))
-
-	-- Expose for class files and settings panel
-	cfSwingTimer.mainHandBar = mainHandBar
-	cfSwingTimer.offHandBar = offHandBar
-	cfSwingTimer.bars[M.MAINHAND] = mainHandBar
-	if offHandBar then cfSwingTimer.bars[M.OFFHAND] = offHandBar end
-
-	local function ResetSwingTimer(bar)
-		if extraAttacks > 0 then
-			extraAttacks = extraAttacks - 1
-		else
-			bar.timer = bar.speed
+	local function UpdateBar(bar, swingStart, speed, now)
+		if speed == 0 or swingStart == 0 then return end
+		local elapsed = now - swingStart
+		if elapsed >= speed then
+			cfSwingTimer.UpdateSwingBar(bar, 0, 0)
+			return true
 		end
+		local progress = elapsed / speed
+		local remaining = speed - elapsed
+		cfSwingTimer.UpdateSwingBar(bar, progress, remaining)
 	end
 
-	local function RescaleTimer(bar, newSpeed)
-		if newSpeed ~= bar.speed and bar.timer > 0 then
-			bar.timer = bar.timer * (newSpeed / bar.speed)
-		end
-		bar.speed = newSpeed
-	end
-
-	local function UpdateMeleeBar(bar, elapsed)
-		if bar.speed == 0 then return end
-		bar.timer = math.max(0, bar.timer - elapsed)
-		local progress = bar.timer > 0 and (1 - bar.timer / bar.speed) or 0
-		cfSwingTimer.UpdateSwingBar(bar, progress, bar.timer)
-	end
-
-	-- OnUpdate
-	frame:SetScript("OnUpdate", function(self, elapsed)
-		UpdateMeleeBar(mainHandBar, mainHandBar.paused and 0 or elapsed)
-		if offHandBar then UpdateMeleeBar(offHandBar, elapsed) end
+	mhFrame:SetScript("OnUpdate", function()
+		local now = GetTime()
+		if UpdateBar(mhBar, cfSwingTimer.mhSwingStart, cfSwingTimer.mhSpeed, now) then cfSwingTimer.mhSwingStart = 0 end
+		if UpdateBar(ohBar, ohSwingStart, ohSpeed, now) then ohSwingStart = 0 end
 	end)
 
 	local function InitWeaponSpeeds()
-		local mhSpeed, ohSpeed = UnitAttackSpeed("player")
-		RescaleTimer(mainHandBar, mhSpeed or 2)
-		if offHandBar then
-			RescaleTimer(offHandBar, ohSpeed or 0)
-			if ohSpeed then offHandBar:Show() else offHandBar:Hide() end
+		local mh, oh = UnitAttackSpeed("player")
+		cfSwingTimer.mhSpeed = mh or 0
+		ohSpeed = oh or 0
+		if ohSpeed > 0 then ohBar:Show() else ohBar:Hide() end
+	end
+
+	local function StartSwing(isOffHand, now)
+		if isOffHand then
+			ohSwingStart = now
+		elseif extraAttacks > 0 then
+			extraAttacks = extraAttacks - 1
+		else
+			cfSwingTimer.mhSwingStart = now
 		end
 	end
 
 	-- Events
-	frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-	frame:RegisterEvent("UNIT_ATTACK_SPEED")
-	frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-	frame:SetScript("OnEvent", function(self, event, unit)
+	mhFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+	mhFrame:RegisterEvent("UNIT_ATTACK_SPEED")
+	mhFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+	mhFrame:RegisterEvent("PLAYER_ENTER_COMBAT")
+	mhFrame:RegisterEvent("PLAYER_LEAVE_COMBAT")
+
+	mhFrame:SetScript("OnEvent", function(self, event, unit)
+		local now = GetTime()
+
+		-- Initialize weapon speeds on login/reload
 		if event == "PLAYER_ENTERING_WORLD" then
 			InitWeaponSpeeds()
 			return
-		end
-
-		if event == "UNIT_ATTACK_SPEED" then
+		-- Update weapon speeds when attack speed changes
+		elseif event == "UNIT_ATTACK_SPEED" then
 			if unit == "player" then InitWeaponSpeeds() end
 			return
-		end
-
-		local _, subevent, _, sourceGUID, _, _, _, destGUID, _, _, _, spellId = CombatLogGetCurrentEventInfo()
-
-		if sourceGUID == playerGUID then
-			if subevent == "SPELL_EXTRA_ATTACKS" then
-				local extraAttacksAmount = 15
-				local extraAmount = select(extraAttacksAmount, CombatLogGetCurrentEventInfo())
-				extraAttacks = extraAttacks + extraAmount
-			elseif subevent == "SWING_DAMAGE" then
-				local swingDamageIsOffHand = 21
-				local isOffHand = select(swingDamageIsOffHand, CombatLogGetCurrentEventInfo())
-				if isOffHand then
-					if offHandBar then ResetSwingTimer(offHandBar) end
-				else
-					ResetSwingTimer(mainHandBar)
+		-- Auto-attack toggled on: push OH back to half-speed if past halfway
+		elseif event == "PLAYER_ENTER_COMBAT" then
+			if ohSwingStart > 0 and ohSpeed > 0 then
+				local halfSpeed = ohSpeed / 2
+				local remaining = ohSpeed - (now - ohSwingStart)
+				if remaining < halfSpeed then
+					ohSwingStart = now - halfSpeed
 				end
-			elseif subevent == "SWING_MISSED" then
-				local swingMissedIsOffHand = 13
-				local isOffHand = select(swingMissedIsOffHand, CombatLogGetCurrentEventInfo())
-				if isOffHand then
-					if offHandBar then ResetSwingTimer(offHandBar) end
-				else
-					ResetSwingTimer(mainHandBar)
-				end
-			elseif subevent == "SPELL_DAMAGE" or subevent == "SPELL_MISSED" then
-				if cfSwingTimer_MeleeReplacer[spellId] then ResetSwingTimer(mainHandBar) end
 			end
+			return
+		-- Auto-attack toggled off: no action needed
+		elseif event == "PLAYER_LEAVE_COMBAT" then return
 		end
 
-		-- spellId is missType for SWING_MISSED
-		if destGUID == playerGUID and subevent == "SWING_MISSED" and spellId == "PARRY" and mainHandBar.timer > 0 then
-			local parryReduction = mainHandBar.speed * 0.4
-			local parryFloor = mainHandBar.speed * 0.2
-			mainHandBar.timer = math.max(parryFloor, mainHandBar.timer - parryReduction)
+		local _, subevent, _, sourceGUID, _, _, _, destGUID, _, _, _, spellIdOrMissType = CombatLogGetCurrentEventInfo()
+		-- Only process our own combat events
+		if sourceGUID ~= playerGUID then return end
+
+		-- Melee hit landed: start new swing
+		if subevent == "SWING_DAMAGE" then
+			local isOffHand = select(SWING_DAMAGE_OFFHAND_INDEX, CombatLogGetCurrentEventInfo())
+			StartSwing(isOffHand, now)
+		-- Melee swing missed: start new swing
+		elseif subevent == "SWING_MISSED" then
+			local isOffHand = select(SWING_MISSED_OFFHAND_INDEX, CombatLogGetCurrentEventInfo())
+			StartSwing(isOffHand, now)
+		-- Extra attacks (e.g. Windfury): queue them
+		elseif subevent == "SPELL_EXTRA_ATTACKS" then
+			local amount = select(EXTRA_ATTACKS_AMOUNT_INDEX, CombatLogGetCurrentEventInfo())
+			extraAttacks = extraAttacks + amount
+		-- Spell replaces melee swing (e.g. Heroic Strike)
+		elseif subevent == "SPELL_DAMAGE" or subevent == "SPELL_MISSED" then
+			if cfSwingTimer_MeleeReplacer[spellIdOrMissType] then StartSwing(false, now) end
+		end
+
+		-- Parry haste: enemy parried, accelerate our main-hand swing
+		if destGUID == playerGUID and subevent == "SWING_MISSED" and spellIdOrMissType == "PARRY" then
+			if cfSwingTimer.mhSwingStart > 0 then
+				local parryReduction = cfSwingTimer.mhSpeed * 0.4
+				local parryFloor = cfSwingTimer.mhSpeed * 0.2
+				local elapsed = now - cfSwingTimer.mhSwingStart
+				local elapsedAfterParry = elapsed + parryReduction
+				local elapsedCap = cfSwingTimer.mhSpeed - parryFloor
+				local newElapsed = math.min(elapsedAfterParry, elapsedCap)
+				cfSwingTimer.mhSwingStart = now - newElapsed
+			end
 		end
 	end)
 end

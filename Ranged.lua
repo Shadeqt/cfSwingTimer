@@ -1,208 +1,109 @@
 function cfSwingTimer.initRanged()
-	local M = cfSwingTimer.MODULE
+	local MODULE = cfSwingTimer.MODULE
 	local playerGUID = cfSwingTimer.playerGUID
 
-	local RANGED_INVENTORY_SLOT = 18
+	local RANGED_SLOT = 18
+	local AUTO_SHOT = 75
+	local RETRY_DURATION = 0.5
+	local PUSHBACK = { 1.0, 1.8, 2.4, 2.8, 3.0 }
 
 	local Color = {
 		SHOOT  = cfSwingTimer.CLASS_COLORS.DEMONHUNTER,
-		CAST   = cfSwingTimer.CASTBAR_COLORS.CASTING,
 		RELOAD = cfSwingTimer.CLASS_COLORS.PRIEST,
 		RETRY  = cfSwingTimer.CASTBAR_COLORS.FAILED,
+		CAST   = cfSwingTimer.CASTBAR_COLORS.CASTING,
 	}
 
-	local State = {
-		IDLE = 0,
-		SHOOT = 1,
-		RELOAD = 2,
-	}
+	-- Timers
+	local shootStart = 0
+	local shootEnd = 0
+	local reloadStart = 0
+	local reloadEnd = 0
+	local retryEnd = 0
+	local lastShotDuration = 0
 
-	local state = State.IDLE
-	local stateStart = 0
-	local stateDuration = 0
-	local lastShootDuration = 0
-
-	-- Cast overlay (independent of state machine)
+	-- Cast state
 	local castStart = 0
-	local castDuration = 0
+	local castEnd = 0
+	local castSpellId = 0
+	local pushbackCount = 0
 
-	-- Retry underlay (independent of state machine, like cast overlay)
-	local retryStart = 0
-	local retryDuration = 0.5
+	local showRangedBar = false
 
 	-- Frame + bar
-	local frame = CreateFrame("Frame", "cfSwingTimerRangedSimple", UIParent)
-	frame:SetPoint("CENTER", 0, -200)
-	frame:SetSize(cfSwingTimer.BAR_WIDTH, cfSwingTimer.BAR_HEIGHT)
+	local frame, bar = cfSwingTimer.CreateCenterBarFrame(MODULE.RANGED, -120, true)
+	frame:Hide()
 
-	local swingBar = cfSwingTimer.CreateCenterSwingBar(frame)
-	swingBar:SetPoint("TOP")
-	cfSwingTimer.bars[M.RANGED] = swingBar
-
-	local function GetShootDuration(spellId)
-		local rangedSpeed = UnitRangedDamage("player")
-		local _, _, _, baseShootMs = GetSpellInfo(spellId)
-		local baseShootTime = ((baseShootMs or 0) > 0 and baseShootMs or 500) / 1000
-		local baseSpeed = cfSwingTimer.GetBaseWeaponSpeed(RANGED_INVENTORY_SLOT)
-		if not baseSpeed then return baseShootTime end
-		return baseShootTime * rangedSpeed / baseSpeed
-	end
-
-	-- Clip zone overlay: shows when casting would delay the next auto shot
-	local clipZones = {}
-	local barWidth = cfSwingTimer.BAR_WIDTH
-	local barHeight = cfSwingTimer.BAR_HEIGHT
-
-	if swingBar.isCenter then
-		local left = swingBar.overlayMid:CreateTexture(nil, "OVERLAY")
-		left:SetColorTexture(1, 0, 0, 0.3)
-		left:SetPoint("LEFT", swingBar, "CENTER", 0, 0)
-		left:Hide()
-		local right = swingBar.overlayMid:CreateTexture(nil, "OVERLAY")
-		right:SetColorTexture(1, 0, 0, 0.3)
-		right:SetPoint("RIGHT", swingBar, "CENTER", 0, 0)
-		right:Hide()
-		clipZones = { left, right }
-	else
-		local clip = swingBar:CreateTexture(nil, "OVERLAY")
-		clip:SetColorTexture(1, 0, 0, 0.3)
-		clip:SetPoint("RIGHT", swingBar, "RIGHT", 0, 0)
-		clip:Hide()
-		clipZones = { clip }
-	end
-
-	local function HideClipZone()
-		for _, tex in ipairs(clipZones) do tex:Hide() end
-	end
-
-	local function ShowClipZone(reloadDuration)
-		local castDur = GetShootDuration(75)
-		if not castDur or reloadDuration == 0 then
-			HideClipZone()
-			return
-		end
-		local fraction = castDur / reloadDuration
-		local maxWidth = swingBar.isCenter and (barWidth / 2) or barWidth
-		local clipWidth = math.min(fraction * maxWidth, maxWidth)
-		for _, tex in ipairs(clipZones) do
-			tex:SetSize(clipWidth, barHeight)
-			tex:Show()
-		end
-	end
-
-	local function ApplyStateColor()
-		if state == State.SHOOT then
-			swingBar:SetStatusBarColor(unpack(Color.SHOOT))
-			HideClipZone()
-		elseif state == State.RELOAD then
-			swingBar:SetStatusBarColor(unpack(Color.RELOAD))
-			ShowClipZone(stateDuration)
-		else
-			HideClipZone()
-		end
-	end
-
-	local function ResetSwingBar()
-		state = State.IDLE
-		cfSwingTimer.UpdateSwingBar(swingBar, 0, 0)
-		ApplyStateColor()
-	end
-
-	local function RenderRetry(now)
-		if retryStart == 0 then return end
-		local elapsed = now - retryStart
-		if elapsed < retryDuration then
-			swingBar:SetStatusBarColor(unpack(Color.RETRY))
-			cfSwingTimer.UpdateSwingBar(swingBar, 1 - elapsed / retryDuration, retryDuration - elapsed)
-		else
-			retryStart = 0
-			cfSwingTimer.UpdateSwingBar(swingBar, 0, 0)
-		end
-	end
-
-	local function StopCast()
-		castStart = 0
-		ApplyStateColor()
-	end
+	-- Cast bar (anchored above swing bar)
+	local castFrame, castBar = cfSwingTimer.CreateBarFrame(MODULE.RANGED_CAST)
+	castFrame:SetPoint("BOTTOM", frame, "TOP", 0, cfSwingTimer.BAR_SPACING)
+	castFrame:Hide()
 
 	-- OnUpdate
 	frame:SetScript("OnUpdate", function()
 		local now = GetTime()
-		local isMoving = GetUnitSpeed("player") > 0
-		local isCasting = UnitCastingInfo("player") ~= nil
 
-		-- Movement resets SHOOT and casting, but not RELOAD
-		if isMoving and state ~= State.RELOAD then
-			if castStart > 0 then StopCast() end
-			if state == State.SHOOT then ResetSwingBar() end
-			RenderRetry(now)
-			return
+		-- Movement cancels shot cast, not reload
+		if GetUnitSpeed("player") > 0 then
+			shootEnd = 0
 		end
 
-		-- Cast overlay (independent of state machine)
-		if castStart > 0 then
-			local elapsed = now - castStart
-			local remaining = castDuration - elapsed
-			cfSwingTimer.UpdateSwingBar(swingBar, elapsed / castDuration, remaining)
-			return
+		-- Shooting: cast in progress
+		if shootEnd > now then
+			cfSwingTimer.HideClipZone(bar)
+			local duration = shootEnd - shootStart
+			local elapsed = now - shootStart
+			local progress = elapsed / duration
+			bar:SetStatusBarColor(unpack(Color.SHOOT))
+			cfSwingTimer.UpdateSwingBar(bar, progress, shootEnd - now)
+
+		-- Reloading: countdown to next auto-shot
+		elseif reloadEnd > now then
+			local duration = reloadEnd - reloadStart
+			local elapsed = now - reloadStart
+			local progress = 1 - elapsed / duration
+			bar:SetStatusBarColor(unpack(Color.RELOAD))
+			cfSwingTimer.UpdateSwingBar(bar, progress, reloadEnd - now)
+
+		-- Retrying: brief delay before next attempt
+		elseif retryEnd > now then
+			cfSwingTimer.HideClipZone(bar)
+			local progress = 1 - (retryEnd - now) / RETRY_DURATION
+			bar:SetStatusBarColor(unpack(Color.RETRY))
+			cfSwingTimer.UpdateSwingBar(bar, progress, retryEnd - now)
+
+		-- Idle: no active timer
+		else
+			cfSwingTimer.HideClipZone(bar)
+			cfSwingTimer.UpdateSwingBar(bar, 0, 0)
 		end
 
-		-- Nothing to render (retry shows in idle gaps)
-		if state == State.IDLE then RenderRetry(now) return end
-
-		-- Auto shot state (shoot / reload)
-		local elapsed = now - stateStart
-		local remaining = math.max(0, stateDuration - elapsed)
-		local progress
-
-		if state == State.SHOOT then
-			progress = elapsed / stateDuration
-		elseif state == State.RELOAD then
-			progress = 1 - elapsed / stateDuration
-		end
-
-		if progress then
-			cfSwingTimer.UpdateSwingBar(swingBar, progress, remaining)
-		end
-		if elapsed >= stateDuration then
-			if state == State.SHOOT and isCasting then
-				ResetSwingBar()
-			else
-				state = State.IDLE
-				ApplyStateColor()
-			end
+		-- Render: cast bar
+		if castEnd > 0 then
+			local castDuration = castEnd - castStart
+			local pb = pushbackCount > 0 and PUSHBACK[pushbackCount] or 0
+			local elapsed = now - castStart - math.min(pb, now - castStart)
+			local progress = elapsed / castDuration
+			local remaining = math.max(0, castDuration - elapsed)
+			cfSwingTimer.UpdateSwingBar(castBar, progress, remaining)
 		end
 	end)
 
-	local function StartShoot(spellId)
-		stateDuration = GetShootDuration(spellId)
-		stateStart = GetTime()
-		lastShootDuration = stateDuration
-		state = State.SHOOT
-		ApplyStateColor()
-	end
-
-	local function StartCast(spellId)
-		local _, _, _, castTimeMs = GetSpellInfo(spellId)
-		castDuration = (castTimeMs and castTimeMs > 0) and (castTimeMs / 1000) or GetShootDuration(spellId)
-		if not castDuration or castDuration == 0 then return end
-		if state == State.SHOOT then ResetSwingBar() end
-		castStart = GetTime()
-		swingBar:SetStatusBarColor(unpack(Color.CAST))
-		HideClipZone()
-	end
-
-	local function GetReloadDuration(spellId)
+	local function GetShotTime(spellId)
 		local rangedSpeed = UnitRangedDamage("player")
-		if not cfSwingTimer_RangedAutoAttack[spellId] then return rangedSpeed end
-		return rangedSpeed - lastShootDuration
+		local _, _, _, baseShotMs = GetSpellInfo(spellId)
+		local baseShotTime = ((baseShotMs or 0) > 0 and baseShotMs or 500) / 1000
+		local baseSpeed = cfSwingTimer.GetBaseWeaponSpeed(RANGED_SLOT)
+		if not baseSpeed then return baseShotTime end
+		return baseShotTime * rangedSpeed / baseSpeed
 	end
 
-	local function StartReload(spellId)
-		stateDuration = GetReloadDuration(spellId)
-		stateStart = GetTime()
-		state = State.RELOAD
-		ApplyStateColor()
+	local function StopCast()
+		castStart = 0
+		castEnd = 0
+		castSpellId = 0
+		pushbackCount = 0
+		castFrame:Hide()
 	end
 
 	-- Events
@@ -212,51 +113,104 @@ function cfSwingTimer.initRanged()
 	frame:RegisterEvent("UNIT_SPELLCAST_FAILED_QUIET")
 	frame:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
 	frame:RegisterEvent("STOP_AUTOREPEAT_SPELL")
+	frame:RegisterEvent("PLAYER_ENTERING_WORLD")
+	frame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 
 	frame:SetScript("OnEvent", function(self, event, ...)
-		-- Auto Shot toggled off
-		if event == "STOP_AUTOREPEAT_SPELL" then
-			retryStart = 0
-			cfSwingTimer.UpdateSwingBar(swingBar, 0, 0)
-			if state == State.SHOOT then ResetSwingBar() end
+		local now = GetTime()
+
+		-- Update visibility on login/reload
+		if event == "PLAYER_ENTERING_WORLD" then
+			showRangedBar = UnitRangedDamage("player") > 0
+			if showRangedBar then frame:Show() else frame:Hide(); castFrame:Hide() end
+			return
+		-- Update visibility on ranged weapon change
+		elseif event == "PLAYER_EQUIPMENT_CHANGED" then
+			if (...) ~= RANGED_SLOT then return end
+			showRangedBar = UnitRangedDamage("player") > 0
+			if showRangedBar then frame:Show() else frame:Hide(); castFrame:Hide() end
 			return
 		end
 
-		-- CLEU (only for SPELL_CAST_START)
+		-- No ranged weapon equipped, skip all processing
+		if not showRangedBar then return end
+
+		-- Auto-shot stopped, clear retry state
+		if event == "STOP_AUTOREPEAT_SPELL" then
+			retryEnd = 0
+			return
+		end
+
+		-- Combat log: track shots, casts, and pushback
 		if event == "COMBAT_LOG_EVENT_UNFILTERED" then
-			local _, subevent, _, sourceGUID, _, _, _, _, _, _, _, cleuSpellId = CombatLogGetCurrentEventInfo()
+			local _, subevent, _, sourceGUID, _, _, _, destGUID, _, _, _, cleuSpellId = CombatLogGetCurrentEventInfo()
+
+			-- Pushback: damage taken while casting
+			if castEnd > 0 and destGUID == playerGUID and pushbackCount < #PUSHBACK then
+				if subevent == "SWING_DAMAGE" or subevent == "SPELL_DAMAGE" or subevent == "RANGE_DAMAGE" or subevent == "ENVIRONMENTAL_DAMAGE" then
+					pushbackCount = pushbackCount + 1
+				end
+			end
+
+			-- Only process our own cast starts
 			if sourceGUID ~= playerGUID or subevent ~= "SPELL_CAST_START" then return end
+			-- Ranged auto-attack: start shot timer
 			if cfSwingTimer_RangedAttack[cleuSpellId] then
-				StartShoot(cleuSpellId)
+				lastShotDuration = GetShotTime(cleuSpellId)
+				if shootEnd <= now then
+					shootStart = now
+					shootEnd = now + lastShotDuration
+				end
+			-- Hunter cast: start cast bar
 			elseif cfSwingTimer_HunterCast[cleuSpellId] then
-				StartCast(cleuSpellId)
+				local _, _, _, castTimeMs = GetSpellInfo(cleuSpellId)
+				local dur = (castTimeMs and castTimeMs > 0) and (castTimeMs / 1000) or GetShotTime(cleuSpellId)
+				if not dur or dur == 0 then return end
+				shootEnd = 0
+				retryEnd = 0
+				castStart = now
+				castSpellId = cleuSpellId
+				pushbackCount = (castTimeMs and castTimeMs > 0) and 0 or (#PUSHBACK + 1)
+				castEnd = now + dur
+				castBar:SetStatusBarColor(unpack(Color.CAST))
+				castFrame:Show()
 			end
 			return
 		end
 
-		-- Unit events
+		-- Spellcast events: only process player casts
 		local unit, _, spellId = ...
 		if unit ~= "player" then return end
 
+		-- Cast succeeded: start reload timer or finish cast
 		if event == "UNIT_SPELLCAST_SUCCEEDED" then
 			if cfSwingTimer_RangedAttack[spellId] then
-				StartReload(spellId)
-			elseif cfSwingTimer_HunterCast[spellId] then
+				local rangedSpeed = UnitRangedDamage("player")
+				local reloadTime = cfSwingTimer_RangedAutoAttack[spellId] and (rangedSpeed - lastShotDuration) or rangedSpeed
+				reloadStart = now
+				reloadEnd = now + reloadTime
+				shootEnd = 0
+				cfSwingTimer.SetClipFraction(bar, GetShotTime(AUTO_SHOT) / reloadTime)
+			elseif spellId == castSpellId then
 				StopCast()
 			end
+		-- Cast failed: clear shot timer and/or cast state
 		elseif event == "UNIT_SPELLCAST_FAILED" then
 			if cfSwingTimer_RangedAttack[spellId] then
-				ResetSwingBar()
-			elseif cfSwingTimer_HunterCast[spellId] then
+				shootEnd = 0
+			end
+			if spellId == castSpellId then
 				StopCast()
 			end
+		-- Cast interrupted: clear cast state
 		elseif event == "UNIT_SPELLCAST_INTERRUPTED" then
-			if cfSwingTimer_HunterCast[spellId] then
+			if spellId == castSpellId then
 				StopCast()
 			end
+		-- Failed quietly: start retry window
 		elseif event == "UNIT_SPELLCAST_FAILED_QUIET" then
-			if cfSwingTimer_RangedAttack[spellId] then
-				retryStart = GetTime()
+			if cfSwingTimer_RangedAttack[spellId] and castEnd == 0 then
+				retryEnd = now + RETRY_DURATION
 			end
 		end
 	end)

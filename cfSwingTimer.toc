@@ -7,11 +7,8 @@ Core.lua
 BetterBlizzFramesIntegration\BarTexture.lua
 Init.lua
 Abilities.lua
-#Melee.lua
-Melee_v2.lua
+Melee.lua
 MeleePaladin.lua
 MeleeWarrior.lua
 MeleeShaman.lua
-#Ranged.lua
-#Ranged_v2.lua
-Ranged_v3.lua
+Ranged.lua
