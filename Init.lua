@@ -4,7 +4,8 @@ local addon = cfSwingTimer
 addon.MODULE = {
 	MAINHAND = "MainHand",
 	OFFHAND  = "OffHand",
-	RANGED   = "Ranged",
+	RANGED      = "Ranged",
+	RANGED_CAST = "RangedCast",
 }
 
 -- ADDON_LOADED

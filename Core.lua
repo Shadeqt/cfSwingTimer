@@ -5,6 +5,8 @@ local BAR_HEIGHT = 13
 local BORDER_WIDTH = 256
 local BORDER_HEIGHT = 64
 local SPARK_SIZE = 32
+local SHOW_BORDER = false
+local BAR_SPACING = SHOW_BORDER and 12 or 2
 
 -- Blizzard class colors (RAID_CLASS_COLORS)
 -- Source: warcraft.wiki.gg/wiki/RAID_CLASS_COLORS
@@ -39,6 +41,7 @@ cfSwingTimer = {
     bars = {},
     CLASS_COLORS = CLASS_COLORS,
     CASTBAR_COLORS = CASTBAR_COLORS,
+    BAR_SPACING = BAR_SPACING,
 }
 
 -- Tooltip scanner: only way to get base (unhasted) weapon speed in Classic
@@ -97,7 +100,36 @@ end
 
 local DEFAULT_COLOR = CASTBAR_COLORS.CASTING
 
-function cfSwingTimer.CreateSwingBar(parent, speed)
+local function AddClipZone(bar)
+    local clip = bar:CreateTexture(nil, "OVERLAY")
+    clip:SetColorTexture(1, 0, 0, 0.3)
+    clip:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
+    clip:Hide()
+    bar.clipZones = { clip }
+end
+
+local function AddCenterClipZone(frame)
+    local clip = frame:CreateTexture(nil, "OVERLAY")
+    clip:SetColorTexture(1, 0, 0, 0.3)
+    clip:SetPoint("BOTTOM", 0, 0)
+    clip:SetHeight(BAR_HEIGHT)
+    clip:Hide()
+    frame.clipZones = { clip }
+end
+
+function cfSwingTimer.SetClipFraction(bar, fraction)
+    local width = math.min(fraction * BAR_WIDTH, BAR_WIDTH)
+    for _, tex in ipairs(bar.clipZones) do
+        tex:SetWidth(width)
+        tex:Show()
+    end
+end
+
+function cfSwingTimer.HideClipZone(bar)
+    for _, tex in ipairs(bar.clipZones) do tex:Hide() end
+end
+
+function cfSwingTimer.CreateSwingBar(parent, speed, clipZone)
     local texture = cfSwingTimer.GetBarTexture()
     local bar = CreateStatusBar(parent, texture, DEFAULT_COLOR)
     bar:SetSize(BAR_WIDTH, BAR_HEIGHT)
@@ -113,13 +145,14 @@ function cfSwingTimer.CreateSwingBar(parent, speed)
     bar.spark:SetPoint("CENTER", bar, "LEFT", 0, 0)
     bar.spark:Hide()
 
-    AddBorder(bar)
+    if clipZone then AddClipZone(bar) end
+    if SHOW_BORDER then AddBorder(bar) end
     AddText(bar)
 
     return bar
 end
 
-function cfSwingTimer.CreateCenterSwingBar(parent, speed)
+function cfSwingTimer.CreateCenterSwingBar(parent, speed, clipZone)
     local frame = CreateFrame("Frame", nil, parent)
     frame:SetSize(BAR_WIDTH, BAR_HEIGHT)
     frame.timer = 0
@@ -127,34 +160,26 @@ function cfSwingTimer.CreateCenterSwingBar(parent, speed)
 
     AddBackground(frame)
 
-    local halfWidth = BAR_WIDTH / 2
     local texture = cfSwingTimer.GetBarTexture()
+    frame.bar = frame:CreateTexture(nil, "ARTWORK")
+    frame.bar:SetTexture(texture)
+    frame.bar:SetHeight(BAR_HEIGHT)
+    frame.bar:SetWidth(0.001)
+    frame.bar:SetPoint("BOTTOM", 0, 0)
+    frame.bar:SetVertexColor(unpack(DEFAULT_COLOR))
 
-    frame.leftBar = CreateStatusBar(frame, texture, DEFAULT_COLOR)
-    frame.leftBar:SetSize(halfWidth, BAR_HEIGHT)
-    frame.leftBar:SetPoint("RIGHT", frame, "CENTER", 0, 0)
-    frame.leftBar:SetReverseFill(true)
-
-    frame.rightBar = CreateStatusBar(frame, texture, DEFAULT_COLOR)
-    frame.rightBar:SetSize(halfWidth, BAR_HEIGHT)
-    frame.rightBar:SetPoint("LEFT", frame, "CENTER", 0, 0)
-
-    -- Mid-level frame for overlays (above bars, below border)
-    frame.overlayMid = CreateFrame("Frame", nil, frame)
-    frame.overlayMid:SetAllPoints()
-    frame.overlayMid:SetFrameLevel(frame:GetFrameLevel() + 5)
+    if clipZone then AddCenterClipZone(frame) end
 
     -- Raised frame so border/text draw above everything
     local overlayFrame = CreateFrame("Frame", nil, frame)
     overlayFrame:SetAllPoints()
     overlayFrame:SetFrameLevel(frame:GetFrameLevel() + 10)
 
-    AddBorder(frame, overlayFrame)
+    if SHOW_BORDER then AddBorder(frame, overlayFrame) end
     AddText(frame, overlayFrame, "OUTLINE")
 
     frame.SetStatusBarColor = function(self, r, g, b, a)
-        self.leftBar:SetStatusBarColor(r, g, b, a)
-        self.rightBar:SetStatusBarColor(r, g, b, a)
+        self.bar:SetVertexColor(r, g, b, a)
     end
 
     frame.isCenter = true
@@ -163,7 +188,7 @@ end
 
 function cfSwingTimer.CreateBarFrame(moduleKey, y)
     local frame = CreateFrame("Frame", "cfSwingTimer_" .. moduleKey, UIParent)
-    frame:SetPoint("CENTER", 0, y)
+    if y then frame:SetPoint("CENTER", 0, y) end
     frame:SetSize(cfSwingTimer.BAR_WIDTH, cfSwingTimer.BAR_HEIGHT)
     local bar = cfSwingTimer.CreateSwingBar(frame)
     bar:SetPoint("TOP")
@@ -171,11 +196,11 @@ function cfSwingTimer.CreateBarFrame(moduleKey, y)
     return frame, bar
 end
 
-function cfSwingTimer.CreateCenterBarFrame(moduleKey, y)
+function cfSwingTimer.CreateCenterBarFrame(moduleKey, y, clipZone)
     local frame = CreateFrame("Frame", "cfSwingTimer_" .. moduleKey, UIParent)
-    frame:SetPoint("CENTER", 0, y)
+    if y then frame:SetPoint("CENTER", 0, y) end
     frame:SetSize(cfSwingTimer.BAR_WIDTH, cfSwingTimer.BAR_HEIGHT)
-    local bar = cfSwingTimer.CreateCenterSwingBar(frame)
+    local bar = cfSwingTimer.CreateCenterSwingBar(frame, nil, clipZone)
     bar:SetPoint("TOP")
     cfSwingTimer.bars[moduleKey] = bar
     return frame, bar
@@ -183,8 +208,8 @@ end
 
 function cfSwingTimer.UpdateSwingBar(bar, progress, remaining)
     if bar.isCenter then
-        bar.leftBar:SetValue(progress)
-        bar.rightBar:SetValue(progress)
+        local width = math.max(progress * BAR_WIDTH, 0.001)
+        bar.bar:SetWidth(width)
     else
         bar:SetValue(progress)
         if remaining > 0 then

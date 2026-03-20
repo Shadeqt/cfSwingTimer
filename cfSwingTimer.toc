@@ -13,4 +13,5 @@ MeleePaladin.lua
 MeleeWarrior.lua
 MeleeShaman.lua
 #Ranged.lua
-Ranged_v2.lua
+#Ranged_v2.lua
+Ranged_v3.lua
