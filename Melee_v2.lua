@@ -16,9 +16,9 @@ function cfSwingTimer.initMelee()
 	ohBar:Hide()
 
 	-- Swing state
-	local mhSwingStart = 0
+	cfSwingTimer.mhSwingStart = 0
 	local ohSwingStart = 0
-	local mhSpeed = 0
+	cfSwingTimer.mhSpeed = 0
 	local ohSpeed = 0
 	local extraAttacks = 0
 
@@ -36,13 +36,13 @@ function cfSwingTimer.initMelee()
 
 	mhFrame:SetScript("OnUpdate", function()
 		local now = GetTime()
-		if UpdateBar(mhBar, mhSwingStart, mhSpeed, now) then mhSwingStart = 0 end
+		if UpdateBar(mhBar, cfSwingTimer.mhSwingStart, cfSwingTimer.mhSpeed, now) then cfSwingTimer.mhSwingStart = 0 end
 		if UpdateBar(ohBar, ohSwingStart, ohSpeed, now) then ohSwingStart = 0 end
 	end)
 
 	local function InitWeaponSpeeds()
 		local mh, oh = UnitAttackSpeed("player")
-		mhSpeed = mh or 0
+		cfSwingTimer.mhSpeed = mh or 0
 		ohSpeed = oh or 0
 		if ohSpeed > 0 then ohBar:Show() else ohBar:Hide() end
 	end
@@ -53,7 +53,7 @@ function cfSwingTimer.initMelee()
 		elseif extraAttacks > 0 then
 			extraAttacks = extraAttacks - 1
 		else
-			mhSwingStart = now
+			cfSwingTimer.mhSwingStart = now
 		end
 	end
 
@@ -112,14 +112,14 @@ function cfSwingTimer.initMelee()
 
 		-- Parry haste: enemy parried, accelerate our main-hand swing
 		if destGUID == playerGUID and subevent == "SWING_MISSED" and spellIdOrMissType == "PARRY" then
-			if mhSwingStart > 0 then
-				local parryReduction = mhSpeed * 0.4
-				local parryFloor = mhSpeed * 0.2
-				local elapsed = now - mhSwingStart
+			if cfSwingTimer.mhSwingStart > 0 then
+				local parryReduction = cfSwingTimer.mhSpeed * 0.4
+				local parryFloor = cfSwingTimer.mhSpeed * 0.2
+				local elapsed = now - cfSwingTimer.mhSwingStart
 				local elapsedAfterParry = elapsed + parryReduction
-				local elapsedCap = mhSpeed - parryFloor
+				local elapsedCap = cfSwingTimer.mhSpeed - parryFloor
 				local newElapsed = math.min(elapsedAfterParry, elapsedCap)
-				mhSwingStart = now - newElapsed
+				cfSwingTimer.mhSwingStart = now - newElapsed
 			end
 		end
 	end)

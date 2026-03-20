@@ -106,18 +106,65 @@ lost.
 
 ---
 
-## Slam and the Melee Swing Timer
+## Ranged Shot Speed API
 
-Slam behavior is **identical** in Vanilla and TBC: it resets the swing
-timer on cast end. The change to pause/suspend came in WotLK 3.0.2.
+### Vanilla (1.12)
+
+`GetSpellInfo()` returns **no cast time** for Auto Shot and Multi-Shot.
+Shot time must be calculated manually from base weapon speed + haste:
+
+```
+hastedSpeed = UnitRangedDamage("player")
+baseSpeed   = tooltip scan (unhasted)
+castTime    = baseCastTime * (hastedSpeed / baseSpeed)
+```
+
+### TBC (2.x)
+
+`GetSpellInfo()` returns the correct cast time for both Auto Shot and
+Multi-Shot. The manual calculation is unnecessary.
+
+### Summary
+
+| Behavior                         | Vanilla 1.12                | TBC 2.x              |
+|----------------------------------|----------------------------|-----------------------|
+| Auto Shot speed from API?        | No (must calculate)        | Yes                   |
+| Multi-Shot speed from API?       | No (must calculate)        | Yes                   |
+
+---
+
+## Slam and the Melee Swing Timer
 
 ### Vanilla (1.12) and TBC (2.x)
 
-Slam **resets** the main-hand swing timer when the cast finishes.
+Slam **resets** the swing timer when the cast finishes. Auto-attacks
+cannot fire while the player is casting.
 
-Auto-attacks cannot fire while the player is casting. When the cast
-completes, the swing timer starts over from zero — a full weapon speed
-wait before the next auto-attack.
+However, warriors exploit this with the "Slam batching" macro:
+
+```
+#showtooltip Slam
+/cast Slam
+/stopattack
+```
+
+By stopping auto-attack during the cast, the reset has no swing timer
+to affect. If Slam's cast time is longer than the remaining swing time,
+the swing was already "due" — so the warrior swings immediately after
+Slam finishes. The reset only matters if Slam lands while the swing
+timer is still actively counting down.
+
+#### Addon behavior (Era)
+
+On `SPELL_CAST_SUCCESS` for Slam: if MH swing timer was still active
+(elapsed < speed), reset `mhSwingStart = now`. If the timer had already
+expired (elapsed >= speed), do nothing — the next `SWING_DAMAGE` picks
+it up naturally.
+
+### WotLK (3.0.2+)
+
+Slam **pauses/suspends** the swing timer instead of resetting it. The
+timer freezes during the cast and resumes from where it was.
 
 ### Patch history
 
@@ -129,10 +176,10 @@ wait before the next auto-attack.
 
 ### Summary
 
-| Behavior                     | Vanilla 1.12      | TBC 2.x            |
-|------------------------------|-------------------|---------------------|
-| Slam resets swing timer?     | Yes (on cast end) | Yes (on cast end)   |
-| Cast pushback from damage?   | Yes               | No (removed 2.0.3)  |
+| Behavior                     | Vanilla 1.12      | TBC 2.x            | WotLK 3.0.2+      |
+|------------------------------|-------------------|---------------------|--------------------|
+| Slam effect on swing timer   | Reset (cast end)  | Reset (cast end)    | Pause/resume       |
+| Cast pushback from damage?   | Yes               | No (removed 2.0.3)  | No                 |
 
 ### References
 
@@ -147,3 +194,7 @@ wait before the next auto-attack.
 
 - Slam — Warcraft Wiki:
   https://warcraft.wiki.gg/wiki/Slam
+
+- Slam batching guide (r/classicwow):
+  https://www.reddit.com/r/classicwow/comments/ejl0d6/warrior_slam_batching_what_ive_learned_so_far/
+

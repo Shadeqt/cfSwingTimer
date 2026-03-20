@@ -1,22 +1,12 @@
-# Ranged Auto Shot: State Machine
+# Ranged Auto Shot: Investigation Notes
 
 Investigation as of 2026-02-22 10:59.
 
----
-
-## Cycle
-
-```
-weapon speed = cast time + reload time
-```
-
-Cast time is ~0.5s base, scales with haste. Reload is the remainder.
-
-Example: 3.0s bow, 15% haste → 2.6s speed → ~0.43s cast + ~2.17s reload.
+For general ranged mechanics, see `ranged-mechanics.md`.
 
 ---
 
-## States
+## State Diagram
 
 ```
 IDLE ──(enable auto shot)──> CAST
@@ -54,12 +44,12 @@ IDLE ──(enable auto shot)──> CAST
 
 ---
 
-## What blocks/allows during each phase
+## What Blocks/Allows During Each Phase
 
 | Action | During RELOAD | During CAST |
 |---|---|---|
 | Moving | OK | Interrupts → RETRY |
-| Casting Aimed/Multi/Steady Shot | OK, reload keeps ticking | Interrupts → RETRY |
+| Casting Aimed/Multi Shot | OK, reload keeps ticking | Interrupts → RETRY |
 | Casting other spells (bandage, etc.) | OK, reload keeps ticking | Interrupts → RETRY |
 | Losing target | OK, reload ticks | Interrupts (if server hasn't confirmed shot) |
 | Feign Death | Full cycle reset | Full cycle reset |
@@ -74,52 +64,7 @@ stands still.
 
 ---
 
-## Clipping
-
-Starting a spell cast when reload is almost done pushes auto shot back.
-
-Example: reload has 0.2s left, player starts Multi-Shot (0.5s cast).
-Auto shot would have fired in 0.2s but now waits until Multi-Shot
-finishes + next 0.5s retry window.
-
----
-
-## Haste
-
-All timers scale with haste:
-- Weapon speed: `UnitRangedDamage("player")` returns hasted speed
-- Cast time: `baseCast * (hastedSpeed / baseWeaponSpeed)`
-- Reload: `hastedSpeed - hastedCastTime`
-
-Base weapon speed comes from the weapon tooltip (unhasted). The ratio
-`hastedSpeed / baseSpeed` is the haste modifier applied to cast time.
-
----
-
-## Feign Death
-
-Resets the server's auto shot cycle entirely. The server discards
-current cycle progress and starts fresh. Auto shot must be re-enabled
-(player stands up / moves / jumps) before a new cycle begins.
-
----
-
-## Events (WoW API)
-
-| Event | What it tells us |
-|---|---|
-| START_AUTOREPEAT_SPELL | Auto shot enabled (IDLE → active) |
-| STOP_AUTOREPEAT_SPELL | Auto shot disabled (but may be tab-target bounce — needs debounce) |
-| UNIT_SPELLCAST_SUCCEEDED (Auto Shot) | Cast completed, arrow fired (CAST → RELOAD) |
-| UNIT_SPELLCAST_FAILED_QUIET (Auto Shot) | Server tried to fire, conditions not met (→ RETRY) |
-| UNIT_SPELLCAST_FAILED (Auto Shot) | Cast explicitly failed |
-| CLEU SPELL_CAST_START (Auto Shot) | Server confirmed cast started (useful as fallback) |
-| CLEU SPELL_CAST_START (Aimed/Multi/Steady) | Hunter spell cast started — blocks auto shot |
-| CLEU SPELL_CAST_SUCCESS/FAILED (Aimed/Multi/Steady) | Hunter spell cast ended — unblocks auto shot |
-
----
-
-## Open questions
+## Open Questions
 
 - Does STOP_AUTOREPEAT_SPELL always need debouncing, or only on
   tab-target? Current implementation uses 0.5s debounce.
@@ -128,3 +73,5 @@ current cycle progress and starts fresh. Auto shot must be re-enabled
   `elapsed + speed + RETRY_INTERVAL`. Needs in-game verification.
 - Vanilla Aimed Shot: does not reset auto shot on cast start (unlike
   TBC). See classic-vs-tbc.md. Current code has TBC behavior.
+- UNIT_SPELLCAST_FAILED_QUIET: which scenarios actually delay the
+  next shot vs being harmless noise? Needs systematic testing.

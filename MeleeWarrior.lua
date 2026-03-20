@@ -1,4 +1,4 @@
--- MeleeWarrior.lua — Slam pause + Heroic Strike/Cleave queue coloring
+-- MeleeWarrior.lua — Slam reset + Heroic Strike/Cleave queue coloring
 function cfSwingTimer.initMeleeWarrior()
 	if select(2, UnitClass("player")) ~= "WARRIOR" then return end
 	local M = cfSwingTimer.MODULE
@@ -7,18 +7,12 @@ function cfSwingTimer.initMeleeWarrior()
 
 	local playerGUID = cfSwingTimer.playerGUID
 
-	local Color = {
-		DEFAULT       = cfSwingTimer.CASTBAR_COLORS.CASTING,
-		HEROIC_STRIKE = { 0.9, 0.6, 0.1 },
-		CLEAVE        = { 0.1, 0.8, 0.2 },
-	}
-
 	local queuedSpellId = nil
 
 	local function GetColor(spellId)
-		if cfSwingTimer_HeroicStrike[spellId] then return Color.HEROIC_STRIKE end
-		if cfSwingTimer_Cleave[spellId] then return Color.CLEAVE end
-		return Color.DEFAULT
+		if cfSwingTimer_HeroicStrike[spellId] then return cfSwingTimer.CLASS_COLORS.ROGUE end
+		if cfSwingTimer_Cleave[spellId] then return cfSwingTimer.CLASS_COLORS.MONK end
+		return cfSwingTimer.CLASS_COLORS.SHAMAN
 	end
 
 	local function SetQueue(spellId)
@@ -29,33 +23,35 @@ function cfSwingTimer.initMeleeWarrior()
 	-- OnUpdate: dequeue when IsCurrentSpell returns false
 	local frame = CreateFrame("Frame")
 	frame:SetScript("OnUpdate", function()
-		if queuedSpellId and not C_Spell.IsCurrentSpell(queuedSpellId) then
-			SetQueue(nil)
+		if queuedSpellId then
+			local name = GetSpellInfo(queuedSpellId)
+			if name and not IsCurrentSpell(name) then
+				SetQueue(nil)
+			end
 		end
 	end)
 
 	-- Events
 	frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 	frame:RegisterEvent("UNIT_SPELLCAST_SENT")
-	frame:SetScript("OnEvent", function(self, event, unit, _, spellId)
+	frame:SetScript("OnEvent", function(self, event, ...)
 		if event == "UNIT_SPELLCAST_SENT" then
+			local unit, target, castGUID, spellId = ...
 			if unit == "player" and cfSwingTimer_MeleeReplacer[spellId] then
 				SetQueue(spellId)
 			end
 			return
 		end
 
-		-- CLEU: slam pause
+		-- CLEU: Slam reset — if Slam lands while MH swing is still active, reset it
 		local _, subevent, _, sourceGUID, _, _, _, _, _, _, _, cleuSpellId = CombatLogGetCurrentEventInfo()
 		if sourceGUID ~= playerGUID then return end
+		if subevent ~= "SPELL_CAST_SUCCESS" then return end
 		if not cfSwingTimer_Slam[cleuSpellId] then return end
 
-		if subevent == "SPELL_CAST_START" then
-			mainHandBar.paused = true
-		elseif subevent == "SPELL_CAST_SUCCESS"
-			or subevent == "SPELL_CAST_FAILED"
-			or subevent == "SPELL_CAST_INTERRUPTED" then
-			mainHandBar.paused = false
+		local now = GetTime()
+		if cfSwingTimer.mhSwingStart > 0 and (now - cfSwingTimer.mhSwingStart) < cfSwingTimer.mhSpeed then
+			cfSwingTimer.mhSwingStart = now
 		end
 	end)
 end

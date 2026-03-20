@@ -21,7 +21,9 @@ local CLASS_COLORS = {
     WARLOCK     = { 0.53, 0.53, 0.93 },
     DRUID       = { 1.00, 0.49, 0.04 },
     DEATHKNIGHT = { 0.77, 0.12, 0.23 },
+    MONK        = { 0.00, 1.00, 0.60 },
     DEMONHUNTER = { 0.64, 0.19, 0.79 },
+    EVOKER      = { 0.20, 0.58, 0.50 },
 }
 
 -- Blizzard casting bar colors
@@ -72,6 +74,14 @@ local function AddBackground(frame)
     frame.bg = frame:CreateTexture(nil, "BACKGROUND")
     frame.bg:SetAllPoints()
     frame.bg:SetColorTexture(0, 0, 0, 0.5)
+end
+
+local function AddThinBorder(frame)
+    local border = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    border:SetPoint("TOPLEFT", -1, 1)
+    border:SetPoint("BOTTOMRIGHT", 1, -1)
+    border:SetBackdrop({ edgeFile = "Interface\\BUTTONS\\WHITE8X8", edgeSize = 1 })
+    border:SetBackdropBorderColor(0, 0, 0, 1)
 end
 
 local function AddBorder(frame, overlayParent)
@@ -146,7 +156,7 @@ function cfSwingTimer.CreateSwingBar(parent, speed, clipZone)
     bar.spark:Hide()
 
     if clipZone then AddClipZone(bar) end
-    if SHOW_BORDER then AddBorder(bar) end
+    if SHOW_BORDER then AddBorder(bar) else AddThinBorder(bar) end
     AddText(bar)
 
     return bar
@@ -175,7 +185,7 @@ function cfSwingTimer.CreateCenterSwingBar(parent, speed, clipZone)
     overlayFrame:SetAllPoints()
     overlayFrame:SetFrameLevel(frame:GetFrameLevel() + 10)
 
-    if SHOW_BORDER then AddBorder(frame, overlayFrame) end
+    if SHOW_BORDER then AddBorder(frame, overlayFrame) else AddThinBorder(frame) end
     AddText(frame, overlayFrame, "OUTLINE")
 
     frame.SetStatusBarColor = function(self, r, g, b, a)
@@ -204,6 +214,13 @@ function cfSwingTimer.CreateCenterBarFrame(moduleKey, y, clipZone)
     bar:SetPoint("TOP")
     cfSwingTimer.bars[moduleKey] = bar
     return frame, bar
+end
+
+function cfSwingTimer.CreateMarker(bar, color)
+    local marker = bar:CreateTexture(nil, "OVERLAY")
+    marker:SetColorTexture(unpack(color))
+    marker:SetSize(1, bar:GetHeight())
+    return marker
 end
 
 function cfSwingTimer.UpdateSwingBar(bar, progress, remaining)
