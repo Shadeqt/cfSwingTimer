@@ -1,4 +1,4 @@
-## Interface: 11504
+## Interface: 11508
 ## Title: cfSwingTimer
 ## Notes: Melee swing timer bars
 ## Author: Claude
