@@ -1,11 +1,11 @@
 -- Blizzard CastingBarFrame dimensions
 -- Source: Interface/AddOns/Blizzard_CastingBar/Vanilla/CastingBarFrame.xml (Gethe/wow-ui-source, classic_era)
-local BAR_WIDTH = 195
-local BAR_HEIGHT = 13
+local SHOW_BORDER = false
+local BAR_WIDTH = SHOW_BORDER and 195 or 200
+local BAR_HEIGHT = SHOW_BORDER and 13 or 10
 local BORDER_WIDTH = 256
 local BORDER_HEIGHT = 64
 local SPARK_SIZE = 32
-local SHOW_BORDER = false
 local BAR_SPACING = SHOW_BORDER and 12 or 2
 
 -- Blizzard class colors (RAID_CLASS_COLORS)
