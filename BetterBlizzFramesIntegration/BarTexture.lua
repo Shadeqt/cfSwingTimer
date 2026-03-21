@@ -9,6 +9,8 @@ function cfSwingTimer.GetBarTexture()
 			return LSM:Fetch(LSM.MediaType.STATUSBAR, bbfDB.unitFrameCastbarTexture)
 		end
 	end
+	local castTex = CastingBarFrame and CastingBarFrame:GetStatusBarTexture()
+	if castTex then return castTex:GetTexture() end
 	return DEFAULT_TEXTURE
 end
 
