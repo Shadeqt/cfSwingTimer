@@ -5,7 +5,6 @@
 ## Version: 0.1
 ## SavedVariablesPerCharacter: cfSwingTimerDB
 Core.lua
-BetterBlizzFramesIntegration\BarTexture.lua
 Init.lua
 Abilities.lua
 Melee.lua

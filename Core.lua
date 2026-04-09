@@ -1,12 +1,20 @@
 -- Blizzard CastingBarFrame dimensions
 -- Source: Interface/AddOns/Blizzard_CastingBar/Vanilla/CastingBarFrame.xml (Gethe/wow-ui-source, classic_era)
-local SHOW_BORDER = false
-local BAR_WIDTH = SHOW_BORDER and 195 or 200
-local BAR_HEIGHT = SHOW_BORDER and 13 or 10
+local BORDER_STYLE = "thin" -- "pixel", "thin", "big", or "none"
+
+local BORDER_CONFIG = {
+    none  = { barWidth = 200, barHeight = 10, barSpacing = 2 },
+    pixel = { barWidth = 200, barHeight = 10, barSpacing = 2 },
+    thin  = { barWidth = 200, barHeight = 10, barSpacing = 2 },
+    big   = { barWidth = 195, barHeight = 13, barSpacing = 12 },
+}
+
+local BAR_WIDTH = BORDER_CONFIG[BORDER_STYLE].barWidth
+local BAR_HEIGHT = BORDER_CONFIG[BORDER_STYLE].barHeight
 local BORDER_WIDTH = 256
 local BORDER_HEIGHT = 64
 local SPARK_SIZE = 32
-local BAR_SPACING = SHOW_BORDER and 12 or 2
+local BAR_SPACING = BORDER_CONFIG[BORDER_STYLE].barSpacing
 
 -- Blizzard class colors (RAID_CLASS_COLORS)
 -- Source: warcraft.wiki.gg/wiki/RAID_CLASS_COLORS
@@ -76,7 +84,7 @@ local function AddBackground(frame)
     frame.bg:SetColorTexture(0, 0, 0, 0.5)
 end
 
-local function AddThinBorder(frame)
+local function AddPixelBorder(frame)
     local border = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     border:SetPoint("TOPLEFT", -1, 1)
     border:SetPoint("BOTTOMRIGHT", 1, -1)
@@ -84,12 +92,33 @@ local function AddThinBorder(frame)
     border:SetBackdropBorderColor(0, 0, 0, 1)
 end
 
-local function AddBorder(frame, overlayParent)
+local function AddThinBorder(frame)
+    local border = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    border:SetPoint("TOPLEFT", -4, 4)
+    border:SetPoint("BOTTOMRIGHT", 4, -4)
+    border:SetBackdrop({
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        edgeSize = 12,
+    })
+end
+
+local function AddBigBorder(frame, overlayParent)
     overlayParent = overlayParent or frame
     frame.border = overlayParent:CreateTexture(nil, "OVERLAY")
     frame.border:SetTexture("Interface\\CastingBar\\UI-CastingBar-Border")
     frame.border:SetSize(BORDER_WIDTH, BORDER_HEIGHT)
     frame.border:SetPoint("TOP", frame, "TOP", 0, 26)
+end
+
+local function CreateBorder(frame, overlayParent)
+    local styles = {
+        pixel = AddPixelBorder,
+        thin  = AddThinBorder,
+        big   = AddBigBorder,
+    }
+    if styles[BORDER_STYLE] then
+        styles[BORDER_STYLE](frame, overlayParent)
+    end
 end
 
 local function AddText(frame, overlayParent, flags)
@@ -138,7 +167,7 @@ function cfSwingTimer.HideClipZone(bar)
 end
 
 function cfSwingTimer.CreateSwingBar(parent, speed, clipZone)
-    local texture = cfSwingTimer.GetBarTexture()
+    local texture = PlayerFrameHealthBar:GetStatusBarTexture():GetTexture()
     local bar = CreateStatusBar(parent, texture, {1, 1, 1})
     bar:SetSize(BAR_WIDTH, BAR_HEIGHT)
     bar.timer = 0
@@ -154,7 +183,7 @@ function cfSwingTimer.CreateSwingBar(parent, speed, clipZone)
     bar.spark:Hide()
 
     if clipZone then AddClipZone(bar) end
-    if SHOW_BORDER then AddBorder(bar) else AddThinBorder(bar) end
+    CreateBorder(bar)
     AddText(bar)
 
     return bar
@@ -168,7 +197,7 @@ function cfSwingTimer.CreateCenterSwingBar(parent, speed, clipZone)
 
     AddBackground(frame)
 
-    local texture = cfSwingTimer.GetBarTexture()
+    local texture = PlayerFrameHealthBar:GetStatusBarTexture():GetTexture()
     frame.bar = frame:CreateTexture(nil, "ARTWORK")
     frame.bar:SetTexture(texture)
     frame.bar:SetHeight(BAR_HEIGHT)
@@ -183,7 +212,7 @@ function cfSwingTimer.CreateCenterSwingBar(parent, speed, clipZone)
     overlayFrame:SetAllPoints()
     overlayFrame:SetFrameLevel(frame:GetFrameLevel() + 10)
 
-    if SHOW_BORDER then AddBorder(frame, overlayFrame) else AddThinBorder(frame) end
+    CreateBorder(frame, overlayFrame)
     AddText(frame, overlayFrame, "OUTLINE")
 
     frame.SetStatusBarColor = function(self, r, g, b, a)
@@ -217,7 +246,7 @@ end
 function cfSwingTimer.CreateMarker(bar, color)
     local marker = bar:CreateTexture(nil, "OVERLAY")
     marker:SetColorTexture(unpack(color))
-    marker:SetSize(1, bar:GetHeight())
+    marker:SetSize(2, bar:GetHeight())
     return marker
 end
 
@@ -239,4 +268,13 @@ function cfSwingTimer.UpdateSwingBar(bar, progress, remaining)
     bar.text:SetText(remaining > 0 and string.format("%.1f", remaining) or "")
 end
 
-
+-- Sync bar textures when health bar texture changes
+hooksecurefunc(PlayerFrameHealthBar, "SetStatusBarTexture", function(_, texture)
+    for _, bar in pairs(cfSwingTimer.bars) do
+        if bar.isCenter then
+            bar.bar:SetTexture(texture)
+        else
+            bar:SetStatusBarTexture(texture)
+        end
+    end
+end)
