@@ -1,126 +1,155 @@
+local addon = cfSwingTimer
+
 local SWING_DAMAGE_OFFHAND_INDEX = 21
 local SWING_MISSED_OFFHAND_INDEX = 13
 local EXTRA_ATTACKS_AMOUNT_INDEX = 15
 
-function cfSwingTimer.initMelee()
-	local MODULE = cfSwingTimer.MODULE
-	local playerGUID = cfSwingTimer.playerGUID
+local function UpdateBar(bar, swingStart, speed, now)
+	if speed == 0 or swingStart == 0 then return end
+	local elapsed = now - swingStart
+	if elapsed >= speed then
+		addon.UpdateSwingBar(bar, 0, 0)
+		return true
+	end
+	local progress = elapsed / speed
+	local remaining = speed - elapsed
+	addon.UpdateSwingBar(bar, progress, remaining)
+end
 
-	-- Frame + bars
-	local mhFrame, mhBar = cfSwingTimer.CreateBarFrame(MODULE.MAINHAND, -150)
-	mhBar:SetStatusBarColor(unpack(cfSwingTimer.CLASS_COLORS.SHAMAN))
+local function StartSwing(isOffHand, now)
+	if isOffHand then
+		addon.offHandSwingStart = now
+	elseif addon.extraAttacks > 0 then
+		addon.extraAttacks = addon.extraAttacks - 1
+	else
+		addon.mhSwingStart = now
+	end
+end
 
-	local ohFrame, ohBar = cfSwingTimer.CreateBarFrame(MODULE.OFFHAND)
-	ohFrame:SetPoint("TOP", mhFrame, "BOTTOM", 0, -cfSwingTimer.BAR_SPACING)
-	ohBar:SetStatusBarColor(unpack(cfSwingTimer.CLASS_COLORS.MAGE))
+function addon.InitMeleeWeaponSpeeds()
+	local mh, oh = UnitAttackSpeed("player")
+	addon.mhSpeed = mh or 0
+	addon.offHandSpeed = oh or 0
+	addon.UpdateMeleeVisibility()
+end
+
+function addon.UpdateMeleeVisibility()
+	if not addon.meleeInitialized then return end
+
+	if addon.db[addon.KEYS.MAINHAND] then
+		addon.mainHandBar:Show()
+	else
+		addon.mainHandBar:Hide()
+	end
+
+	if addon.db[addon.KEYS.OFFHAND] and addon.offHandSpeed > 0 then
+		addon.offHandBar:Show()
+	else
+		addon.offHandBar:Hide()
+	end
+end
+
+function addon.EnableMelee()
+	if addon.meleeInitialized then
+		addon.UpdateMeleeVisibility()
+		return
+	end
+
+	local mhFrame, mhBar = addon.CreateBarFrame(addon.KEYS.MAINHAND, -150)
+	mhBar:SetStatusBarColor(unpack(addon.CLASS_COLORS.SHAMAN))
+
+	local ohFrame, ohBar = addon.CreateBarFrame(addon.KEYS.OFFHAND)
+	ohFrame:SetPoint("TOP", mhFrame, "BOTTOM", 0, -addon.BAR_SPACING)
+	ohBar:SetStatusBarColor(unpack(addon.CLASS_COLORS.MAGE))
 	ohBar:Hide()
 
-	-- Swing state
-	cfSwingTimer.mhSwingStart = 0
-	local ohSwingStart = 0
-	cfSwingTimer.mhSpeed = 0
-	local ohSpeed = 0
-	local extraAttacks = 0
-
-	local function UpdateBar(bar, swingStart, speed, now)
-		if speed == 0 or swingStart == 0 then return end
-		local elapsed = now - swingStart
-		if elapsed >= speed then
-			cfSwingTimer.UpdateSwingBar(bar, 0, 0)
-			return true
-		end
-		local progress = elapsed / speed
-		local remaining = speed - elapsed
-		cfSwingTimer.UpdateSwingBar(bar, progress, remaining)
-	end
+	addon.mainHandFrame = mhFrame
+	addon.mainHandBar = mhBar
+	addon.offHandFrame = ohFrame
+	addon.offHandBar = ohBar
+	addon.mhSwingStart = 0
+	addon.offHandSwingStart = 0
+	addon.mhSpeed = 0
+	addon.offHandSpeed = 0
+	addon.extraAttacks = 0
 
 	mhFrame:SetScript("OnUpdate", function()
 		local now = GetTime()
-		if UpdateBar(mhBar, cfSwingTimer.mhSwingStart, cfSwingTimer.mhSpeed, now) then cfSwingTimer.mhSwingStart = 0 end
-		if UpdateBar(ohBar, ohSwingStart, ohSpeed, now) then ohSwingStart = 0 end
+		if UpdateBar(addon.mainHandBar, addon.mhSwingStart, addon.mhSpeed, now) then
+			addon.mhSwingStart = 0
+		end
+		if UpdateBar(addon.offHandBar, addon.offHandSwingStart, addon.offHandSpeed, now) then
+			addon.offHandSwingStart = 0
+		end
 	end)
 
-	local function InitWeaponSpeeds()
-		local mh, oh = UnitAttackSpeed("player")
-		cfSwingTimer.mhSpeed = mh or 0
-		ohSpeed = oh or 0
-		if ohSpeed > 0 then ohBar:Show() else ohBar:Hide() end
-	end
-
-	local function StartSwing(isOffHand, now)
-		if isOffHand then
-			ohSwingStart = now
-		elseif extraAttacks > 0 then
-			extraAttacks = extraAttacks - 1
-		else
-			cfSwingTimer.mhSwingStart = now
-		end
-	end
-
-	-- Events
 	mhFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 	mhFrame:RegisterEvent("UNIT_ATTACK_SPEED")
 	mhFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 	mhFrame:RegisterEvent("PLAYER_ENTER_COMBAT")
 	mhFrame:RegisterEvent("PLAYER_LEAVE_COMBAT")
-
-	mhFrame:SetScript("OnEvent", function(self, event, unit)
+	mhFrame:SetScript("OnEvent", function(_, event, unit)
 		local now = GetTime()
 
-		-- Initialize weapon speeds on login/reload
 		if event == "PLAYER_ENTERING_WORLD" then
-			InitWeaponSpeeds()
+			addon.InitMeleeWeaponSpeeds()
 			return
-		-- Update weapon speeds when attack speed changes
 		elseif event == "UNIT_ATTACK_SPEED" then
-			if unit == "player" then InitWeaponSpeeds() end
+			if unit == "player" then addon.InitMeleeWeaponSpeeds() end
 			return
-		-- Auto-attack toggled on: push OH back to half-speed if past halfway
 		elseif event == "PLAYER_ENTER_COMBAT" then
-			if ohSwingStart > 0 and ohSpeed > 0 then
-				local halfSpeed = ohSpeed / 2
-				local remaining = ohSpeed - (now - ohSwingStart)
+			if addon.offHandSwingStart > 0 and addon.offHandSpeed > 0 then
+				local halfSpeed = addon.offHandSpeed / 2
+				local remaining = addon.offHandSpeed - (now - addon.offHandSwingStart)
 				if remaining < halfSpeed then
-					ohSwingStart = now - halfSpeed
+					addon.offHandSwingStart = now - halfSpeed
 				end
 			end
 			return
-		-- Auto-attack toggled off: no action needed
-		elseif event == "PLAYER_LEAVE_COMBAT" then return
+		elseif event == "PLAYER_LEAVE_COMBAT" then
+			return
 		end
 
 		local _, subevent, _, sourceGUID, _, _, _, destGUID, _, _, _, spellIdOrMissType = CombatLogGetCurrentEventInfo()
-		-- Only process our own combat events
-		if sourceGUID ~= playerGUID then return end
+		if sourceGUID ~= addon.playerGUID then return end
 
-		-- Melee hit landed: start new swing
 		if subevent == "SWING_DAMAGE" then
-			local isOffHand = select(SWING_DAMAGE_OFFHAND_INDEX, CombatLogGetCurrentEventInfo())
-			StartSwing(isOffHand, now)
-		-- Melee swing missed: start new swing
+			StartSwing(select(SWING_DAMAGE_OFFHAND_INDEX, CombatLogGetCurrentEventInfo()), now)
 		elseif subevent == "SWING_MISSED" then
-			local isOffHand = select(SWING_MISSED_OFFHAND_INDEX, CombatLogGetCurrentEventInfo())
-			StartSwing(isOffHand, now)
-		-- Extra attacks (e.g. Windfury): queue them
+			StartSwing(select(SWING_MISSED_OFFHAND_INDEX, CombatLogGetCurrentEventInfo()), now)
 		elseif subevent == "SPELL_EXTRA_ATTACKS" then
-			local amount = select(EXTRA_ATTACKS_AMOUNT_INDEX, CombatLogGetCurrentEventInfo())
-			extraAttacks = extraAttacks + amount
-		-- Spell replaces melee swing (e.g. Heroic Strike)
+			addon.extraAttacks = addon.extraAttacks + select(EXTRA_ATTACKS_AMOUNT_INDEX, CombatLogGetCurrentEventInfo())
 		elseif subevent == "SPELL_DAMAGE" or subevent == "SPELL_MISSED" then
-			if cfSwingTimer_MeleeReplacer[spellIdOrMissType] then StartSwing(false, now) end
-		end
-
-		-- Parry haste: enemy parried, accelerate our main-hand swing
-		if destGUID == playerGUID and subevent == "SWING_MISSED" and spellIdOrMissType == "PARRY" then
-			if cfSwingTimer.mhSwingStart > 0 then
-				local parryReduction = cfSwingTimer.mhSpeed * 0.4
-				local parryFloor = cfSwingTimer.mhSpeed * 0.2
-				local elapsed = now - cfSwingTimer.mhSwingStart
-				local elapsedAfterParry = elapsed + parryReduction
-				local elapsedCap = cfSwingTimer.mhSpeed - parryFloor
-				local newElapsed = math.min(elapsedAfterParry, elapsedCap)
-				cfSwingTimer.mhSwingStart = now - newElapsed
+			if cfSwingTimer_MeleeReplacer[spellIdOrMissType] then
+				StartSwing(false, now)
 			end
 		end
+
+		if destGUID == addon.playerGUID and subevent == "SWING_MISSED" and spellIdOrMissType == "PARRY" and addon.mhSwingStart > 0 then
+			local parryReduction = addon.mhSpeed * 0.4
+			local parryFloor = addon.mhSpeed * 0.2
+			local elapsed = now - addon.mhSwingStart
+			local elapsedAfterParry = elapsed + parryReduction
+			local elapsedCap = addon.mhSpeed - parryFloor
+			addon.mhSwingStart = now - math.min(elapsedAfterParry, elapsedCap)
+		end
 	end)
+
+	addon.meleeInitialized = true
+
+	if addon.db[addon.KEYS.PALADIN_TWIST] then
+		addon.InitPaladinTwist()
+	end
+	if addon.db[addon.KEYS.WARRIOR_QUEUE] then
+		addon.InitWarriorQueue()
+	end
+	if addon.db[addon.KEYS.SHAMAN_HALF] then
+		addon.InitShamanHalf()
+	end
+
+	addon.UpdateMeleeVisibility()
+end
+
+function addon.initMelee()
+	addon.EnableMelee()
 end

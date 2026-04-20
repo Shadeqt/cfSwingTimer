@@ -4,12 +4,13 @@
 ## Author: Claude
 ## Version: 0.1
 ## SavedVariablesPerCharacter: cfSwingTimerDB
-Core.lua
 Init.lua
+Core.lua
 Abilities.lua
 Melee.lua
 MeleePaladin.lua
 MeleeWarrior.lua
 MeleeShaman.lua
 Ranged.lua
-Settings.lua
+GUI/_Factory.lua
+GUI/Settings.lua

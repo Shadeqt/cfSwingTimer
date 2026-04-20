@@ -44,22 +44,50 @@ local CASTBAR_COLORS = {
     NONINTERRUPTIBLE = { 0.70, 0.70, 0.70 },
 }
 
-cfSwingTimer = {
-    BAR_WIDTH = BAR_WIDTH,
-    BAR_HEIGHT = BAR_HEIGHT,
-    playerGUID = UnitGUID("player"),
-    bars = {},
-    CLASS_COLORS = CLASS_COLORS,
-    CASTBAR_COLORS = CASTBAR_COLORS,
-    BAR_SPACING = BAR_SPACING,
-}
+local addon = cfSwingTimer
+addon.BAR_WIDTH = BAR_WIDTH
+addon.BAR_HEIGHT = BAR_HEIGHT
+addon.playerGUID = UnitGUID("player")
+addon.bars = addon.bars or {}
+addon.borders = addon.borders or {}
+addon.CLASS_COLORS = CLASS_COLORS
+addon.CASTBAR_COLORS = CASTBAR_COLORS
+addon.BAR_SPACING = BAR_SPACING
+
+local borderHooked = false
+
+local function SyncBorder(border)
+    if not border or not PlayerFrameTexture then return end
+    local r, g, b, a = PlayerFrameTexture:GetVertexColor()
+    if border.SetVertexColor then
+        border:SetVertexColor(r, g, b, a)
+    elseif border.SetBackdropBorderColor then
+        border:SetBackdropBorderColor(r, g, b, a)
+    end
+end
+
+local function SyncBorders()
+    for border in pairs(addon.borders) do
+        SyncBorder(border)
+    end
+end
+
+local function RegisterBorder(border)
+    if not border then return end
+    addon.borders[border] = true
+    SyncBorder(border)
+
+    if borderHooked or not PlayerFrameTexture then return end
+    borderHooked = true
+    hooksecurefunc(PlayerFrameTexture, "SetVertexColor", SyncBorders)
+end
 
 -- Tooltip scanner: only way to get base (unhasted) weapon speed in Classic
 local tooltipScanner = CreateFrame("GameTooltip", "cfScanTip", nil, "GameTooltipTemplate")
 tooltipScanner:SetOwner(WorldFrame, "ANCHOR_NONE")
 local baseSpeedCache = {}
 
-function cfSwingTimer.GetBaseWeaponSpeed(inventorySlot)
+function addon.GetBaseWeaponSpeed(inventorySlot)
     local itemId = GetInventoryItemID("player", inventorySlot)
     if not itemId then return nil end
     if baseSpeedCache[itemId] then return baseSpeedCache[itemId] end
@@ -90,6 +118,8 @@ local function AddPixelBorder(frame)
     border:SetPoint("BOTTOMRIGHT", 1, -1)
     border:SetBackdrop({ edgeFile = "Interface\\BUTTONS\\WHITE8X8", edgeSize = 1 })
     border:SetBackdropBorderColor(0, 0, 0, 1)
+    frame.border = border
+    RegisterBorder(border)
 end
 
 local function AddThinBorder(frame)
@@ -100,6 +130,8 @@ local function AddThinBorder(frame)
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
         edgeSize = 12,
     })
+    frame.border = border
+    RegisterBorder(border)
 end
 
 local function AddBigBorder(frame, overlayParent)
@@ -108,6 +140,7 @@ local function AddBigBorder(frame, overlayParent)
     frame.border:SetTexture("Interface\\CastingBar\\UI-CastingBar-Border")
     frame.border:SetSize(BORDER_WIDTH, BORDER_HEIGHT)
     frame.border:SetPoint("TOP", frame, "TOP", 0, 26)
+    RegisterBorder(frame.border)
 end
 
 local function CreateBorder(frame, overlayParent)
@@ -154,7 +187,7 @@ local function AddCenterClipZone(frame)
     frame.clipZones = { clip }
 end
 
-function cfSwingTimer.SetClipFraction(bar, fraction)
+function addon.SetClipFraction(bar, fraction)
     local width = math.min(fraction * BAR_WIDTH, BAR_WIDTH)
     for _, tex in ipairs(bar.clipZones) do
         tex:SetWidth(width)
@@ -162,11 +195,11 @@ function cfSwingTimer.SetClipFraction(bar, fraction)
     end
 end
 
-function cfSwingTimer.HideClipZone(bar)
+function addon.HideClipZone(bar)
     for _, tex in ipairs(bar.clipZones) do tex:Hide() end
 end
 
-function cfSwingTimer.CreateSwingBar(parent, speed, clipZone)
+function addon.CreateSwingBar(parent, speed, clipZone)
     local texture = PlayerFrameHealthBar:GetStatusBarTexture():GetTexture()
     local bar = CreateStatusBar(parent, texture, {1, 1, 1})
     bar:SetSize(BAR_WIDTH, BAR_HEIGHT)
@@ -189,7 +222,7 @@ function cfSwingTimer.CreateSwingBar(parent, speed, clipZone)
     return bar
 end
 
-function cfSwingTimer.CreateCenterSwingBar(parent, speed, clipZone)
+function addon.CreateCenterSwingBar(parent, speed, clipZone)
     local frame = CreateFrame("Frame", nil, parent)
     frame:SetSize(BAR_WIDTH, BAR_HEIGHT)
     frame.timer = 0
@@ -223,34 +256,34 @@ function cfSwingTimer.CreateCenterSwingBar(parent, speed, clipZone)
     return frame
 end
 
-function cfSwingTimer.CreateBarFrame(moduleKey, y)
+function addon.CreateBarFrame(moduleKey, y)
     local frame = CreateFrame("Frame", "cfSwingTimer_" .. moduleKey, UIParent)
     if y then frame:SetPoint("CENTER", 0, y) end
-    frame:SetSize(cfSwingTimer.BAR_WIDTH, cfSwingTimer.BAR_HEIGHT)
-    local bar = cfSwingTimer.CreateSwingBar(frame)
+    frame:SetSize(addon.BAR_WIDTH, addon.BAR_HEIGHT)
+    local bar = addon.CreateSwingBar(frame)
     bar:SetPoint("TOP")
-    cfSwingTimer.bars[moduleKey] = bar
+    addon.bars[moduleKey] = bar
     return frame, bar
 end
 
-function cfSwingTimer.CreateCenterBarFrame(moduleKey, y, clipZone)
+function addon.CreateCenterBarFrame(moduleKey, y, clipZone)
     local frame = CreateFrame("Frame", "cfSwingTimer_" .. moduleKey, UIParent)
     if y then frame:SetPoint("CENTER", 0, y) end
-    frame:SetSize(cfSwingTimer.BAR_WIDTH, cfSwingTimer.BAR_HEIGHT)
-    local bar = cfSwingTimer.CreateCenterSwingBar(frame, nil, clipZone)
+    frame:SetSize(addon.BAR_WIDTH, addon.BAR_HEIGHT)
+    local bar = addon.CreateCenterSwingBar(frame, nil, clipZone)
     bar:SetPoint("TOP")
-    cfSwingTimer.bars[moduleKey] = bar
+    addon.bars[moduleKey] = bar
     return frame, bar
 end
 
-function cfSwingTimer.CreateMarker(bar, color)
+function addon.CreateMarker(bar, color)
     local marker = bar:CreateTexture(nil, "OVERLAY")
     marker:SetColorTexture(unpack(color))
     marker:SetSize(2, bar:GetHeight())
     return marker
 end
 
-function cfSwingTimer.UpdateSwingBar(bar, progress, remaining)
+function addon.UpdateSwingBar(bar, progress, remaining)
     if bar.isCenter then
         local width = math.max(progress * BAR_WIDTH, 0.001)
         bar.bar:SetWidth(width)
@@ -270,7 +303,7 @@ end
 
 -- Sync bar textures when health bar texture changes
 hooksecurefunc(PlayerFrameHealthBar, "SetStatusBarTexture", function(_, texture)
-    for _, bar in pairs(cfSwingTimer.bars) do
+    for _, bar in pairs(addon.bars) do
         if bar.isCenter then
             bar.bar:SetTexture(texture)
         else
