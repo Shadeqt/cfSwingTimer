@@ -1,229 +1,239 @@
-local addon = cfSwingTimer
+local _, addon = ...
+
+-- Ranged is Hunter-only: a hunter always has the ranged engine, so we gate the
+-- whole file by class rather than dynamically registering on UnitRangedDamage.
+if select(2, UnitClass("player")) ~= "HUNTER" then return end
 
 local RANGED_SLOT = 18
 local AUTO_SHOT = 75
 local RETRY_DURATION = 0.5
 local PUSHBACK = { 1.0, 1.8, 2.4, 2.8, 3.0 }
 
+-- Ranged owns its colors (no Era surface for these): DH purple has no Era class
+-- entry, the rest are fixed castbar-style literals.
 local Color = {
-	SHOOT = addon.CLASS_COLORS.DEMONHUNTER,
-	RELOAD = addon.CLASS_COLORS.PRIEST,
-	RETRY = addon.CASTBAR_COLORS.FAILED,
-	CAST = addon.CASTBAR_COLORS.CASTING,
+    SHOOT  = { 0.64, 0.19, 0.79 },
+    RELOAD = { 1.00, 1.00, 1.00 },
+    RETRY  = { 1.00, 0.00, 0.00 },
+    CAST   = { 1.00, 0.70, 0.00 },
 }
 
+-- State
+local shootStart, shootEnd = 0, 0
+local reloadStart, reloadEnd = 0, 0
+local retryEnd = 0
+local lastShotDuration = 0
+local castStart, castEnd, castSpellId = 0, 0, 0
+local pushbackCount = 0
+
+-- Tooltip scanner: the only way to read base (unhasted) weapon speed in Era (no
+-- data API; C_TooltipInfo item getters are Retail-only). Locale-safe: find the
+-- WEAPON_SPEED label, then parse a number allowing ',' or '.' decimals.
+local scanner = CreateFrame("GameTooltip", "cfSwingTimerScanTip", nil, "GameTooltipTemplate")
+scanner:SetOwner(WorldFrame, "ANCHOR_NONE")
+local baseSpeedCache = {}
+local speedLabel = WEAPON_SPEED or "Speed"
+
+local function GetBaseWeaponSpeed(slot)
+    local itemId = GetInventoryItemID("player", slot)
+    if not itemId then return end
+    if baseSpeedCache[itemId] then return baseSpeedCache[itemId] end
+    scanner:ClearLines()
+    scanner:SetInventoryItem("player", slot)
+    for i = 2, scanner:NumLines() do
+        local text = _G["cfSwingTimerScanTipTextRight" .. i]:GetText()
+        if text and text:find(speedLabel, 1, true) then
+            local number = text:match("(%d+[%.,]%d+)")
+            if number then
+                baseSpeedCache[itemId] = tonumber((number:gsub(",", ".")))
+                return baseSpeedCache[itemId]
+            end
+        end
+    end
+end
+
 local function GetShotTime(spellId)
-	local rangedSpeed = UnitRangedDamage("player")
-	local _, _, _, baseShotMs = GetSpellInfo(spellId)
-	local baseShotTime = ((baseShotMs or 0) > 0 and baseShotMs or 500) / 1000
-	local baseSpeed = addon.GetBaseWeaponSpeed(RANGED_SLOT)
-	if not baseSpeed then return baseShotTime end
-	return baseShotTime * rangedSpeed / baseSpeed
+    local rangedSpeed = UnitRangedDamage("player")
+    local info = C_Spell.GetSpellInfo(spellId)
+    local baseShotMs = info and info.castTime or 0
+    local baseShotTime = (baseShotMs > 0 and baseShotMs or 500) / 1000
+    local baseSpeed = GetBaseWeaponSpeed(RANGED_SLOT)
+    if not baseSpeed then return baseShotTime end
+    return baseShotTime * rangedSpeed / baseSpeed
+end
+
+-- The base ranged bar is the driver (OnUpdate). The cast bar is parented above it
+-- and shown only during a cast. Both hidden until the first ranged action.
+local rangedBar = addon.CreateSwingBar(UIParent)
+rangedBar:SetPoint("CENTER", 0, -120)
+rangedBar:Hide()
+
+-- Clip zone: a band sized to a shot's cast time, on the reload bar. Firing a shot
+-- inside it delays the next auto-shot — the "don't clip" warning. Ranged-only.
+local clipZone = rangedBar:CreateTexture(nil, "OVERLAY")
+clipZone:SetColorTexture(1, 0, 0, 0.3)
+clipZone:SetPoint("TOPRIGHT", rangedBar, "TOPRIGHT", 0, 0)
+clipZone:SetPoint("BOTTOMRIGHT", rangedBar, "BOTTOMRIGHT", 0, 0)
+clipZone:Hide()
+
+local function SetClip(fraction)
+    clipZone:SetWidth(math.min(fraction * addon.BAR_WIDTH, addon.BAR_WIDTH))
+    clipZone:Show()
+end
+
+local castBar = addon.CreateSwingBar(rangedBar)
+castBar:SetPoint("BOTTOM", rangedBar, "TOP", 0, addon.BAR_SPACING)
+castBar.color = Color.CAST
+castBar:Hide()
+
+local function ShowRanged()
+    if UnitRangedDamage("player") > 0 then
+        rangedBar:Show()
+    end
 end
 
 local function StopCast()
-	addon.rangedCastStart = 0
-	addon.rangedCastEnd = 0
-	addon.rangedCastSpellId = 0
-	addon.rangedPushbackCount = 0
-	if addon.rangedCastFrame then
-		addon.rangedCastFrame:Hide()
-	end
+    castStart, castEnd, castSpellId, pushbackCount = 0, 0, 0, 0
+    castBar:Hide()
 end
 
-function addon.UpdateRangedVisibility()
-	if not addon.rangedInitialized then return end
-
-	local showBase = addon.showRangedBar and addon.db[addon.KEYS.RANGED]
-	local showCast = addon.showRangedBar and addon.db[addon.KEYS.RANGED] and addon.db[addon.KEYS.RANGED_CAST] and addon.rangedCastEnd > 0
-
-	if showBase then
-		addon.rangedFrame:Show()
-	else
-		addon.rangedFrame:Hide()
-	end
-
-	if showCast then
-		addon.rangedCastFrame:Show()
-	else
-		addon.rangedCastFrame:Hide()
-	end
+local function ClearShots()
+    shootEnd, reloadEnd, retryEnd = 0, 0, 0
 end
 
-function addon.SetupRanged()
-	if addon.rangedInitialized then
-		addon.UpdateRangedVisibility()
-		return
-	end
+rangedBar:SetScript("OnUpdate", function()
+    local now = GetTime()
 
-	local frame, bar = addon.CreateCenterBarFrame(addon.KEYS.RANGED, -120, true)
-	frame:Hide()
+    if GetUnitSpeed("player") > 0 then
+        shootEnd = 0
+    end
 
-	local castFrame, castBar = addon.CreateBarFrame(addon.KEYS.RANGED_CAST)
-	castFrame:SetPoint("BOTTOM", frame, "TOP", 0, addon.BAR_SPACING)
-	castFrame:Hide()
+    if shootEnd > now then
+        clipZone:Hide()
+        rangedBar:SetStatusBarColor(Color.SHOOT[1], Color.SHOOT[2], Color.SHOOT[3])
+        addon.UpdateSwingBar(rangedBar, (now - shootStart) / (shootEnd - shootStart), shootEnd - now)
+    elseif reloadEnd > now then
+        rangedBar:SetStatusBarColor(Color.RELOAD[1], Color.RELOAD[2], Color.RELOAD[3])
+        addon.UpdateSwingBar(rangedBar, 1 - (now - reloadStart) / (reloadEnd - reloadStart), reloadEnd - now)
+    elseif retryEnd > now then
+        clipZone:Hide()
+        rangedBar:SetStatusBarColor(Color.RETRY[1], Color.RETRY[2], Color.RETRY[3])
+        addon.UpdateSwingBar(rangedBar, 1 - (retryEnd - now) / RETRY_DURATION, retryEnd - now)
+    else
+        clipZone:Hide()
+        addon.UpdateSwingBar(rangedBar, 0, 0)
+    end
 
-	addon.rangedFrame = frame
-	addon.rangedBar = bar
-	addon.rangedCastFrame = castFrame
-	addon.rangedCastBar = castBar
-	addon.rangedShootStart = 0
-	addon.rangedShootEnd = 0
-	addon.rangedReloadStart = 0
-	addon.rangedReloadEnd = 0
-	addon.rangedRetryEnd = 0
-	addon.rangedLastShotDuration = 0
-	addon.rangedCastStart = 0
-	addon.rangedCastEnd = 0
-	addon.rangedCastSpellId = 0
-	addon.rangedPushbackCount = 0
-	addon.showRangedBar = false
+    if castEnd > 0 then
+        local castDuration = castEnd - castStart
+        local pushback = pushbackCount > 0 and PUSHBACK[pushbackCount] or 0
+        local elapsed = now - castStart - math.min(pushback, now - castStart)
+        addon.UpdateSwingBar(castBar, elapsed / castDuration, math.max(0, castDuration - elapsed))
+        castBar:Show()
+    else
+        castBar:Hide()
+    end
+end)
 
-	frame:SetScript("OnUpdate", function()
-		local now = GetTime()
+local events = CreateFrame("Frame")
+events:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+events:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+events:RegisterEvent("UNIT_SPELLCAST_FAILED")
+events:RegisterEvent("UNIT_SPELLCAST_FAILED_QUIET")
+events:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
+events:RegisterEvent("STOP_AUTOREPEAT_SPELL")
+events:RegisterEvent("PLAYER_ENTERING_WORLD")
+events:RegisterEvent("PLAYER_REGEN_ENABLED")
+events:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
+events:SetScript("OnEvent", function(_, event, ...)
+    local now = GetTime()
 
-		if GetUnitSpeed("player") > 0 then
-			addon.rangedShootEnd = 0
-		end
+    if event == "PLAYER_ENTERING_WORLD" then
+        addon.playerGUID = UnitGUID("player")
+        return
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        ClearShots()
+        StopCast()
+        rangedBar:Hide()
+        return
+    elseif event == "PLAYER_EQUIPMENT_CHANGED" then
+        local slot = ...
+        if slot == RANGED_SLOT and UnitRangedDamage("player") == 0 then
+            ClearShots()
+            StopCast()
+            rangedBar:Hide()
+        end
+        return
+    elseif event == "STOP_AUTOREPEAT_SPELL" then
+        retryEnd = 0
+        return
+    end
 
-		if addon.rangedShootEnd > now then
-			addon.HideClipZone(addon.rangedBar)
-			local duration = addon.rangedShootEnd - addon.rangedShootStart
-			local elapsed = now - addon.rangedShootStart
-			addon.rangedBar:SetStatusBarColor(unpack(Color.SHOOT))
-			addon.UpdateSwingBar(addon.rangedBar, elapsed / duration, addon.rangedShootEnd - now)
-		elseif addon.rangedReloadEnd > now then
-			local duration = addon.rangedReloadEnd - addon.rangedReloadStart
-			local elapsed = now - addon.rangedReloadStart
-			addon.rangedBar:SetStatusBarColor(unpack(Color.RELOAD))
-			addon.UpdateSwingBar(addon.rangedBar, 1 - elapsed / duration, addon.rangedReloadEnd - now)
-		elseif addon.rangedRetryEnd > now then
-			addon.HideClipZone(addon.rangedBar)
-			local progress = 1 - (addon.rangedRetryEnd - now) / RETRY_DURATION
-			addon.rangedBar:SetStatusBarColor(unpack(Color.RETRY))
-			addon.UpdateSwingBar(addon.rangedBar, progress, addon.rangedRetryEnd - now)
-		else
-			addon.HideClipZone(addon.rangedBar)
-			addon.UpdateSwingBar(addon.rangedBar, 0, 0)
-		end
+    if event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        local _, subevent, _, sourceGUID, _, _, _, destGUID, _, _, _, cleuSpellId = CombatLogGetCurrentEventInfo()
 
-		if addon.rangedCastEnd > 0 and addon.db[addon.KEYS.RANGED] and addon.db[addon.KEYS.RANGED_CAST] then
-			local castDuration = addon.rangedCastEnd - addon.rangedCastStart
-			local pb = addon.rangedPushbackCount > 0 and PUSHBACK[addon.rangedPushbackCount] or 0
-			local elapsed = now - addon.rangedCastStart - math.min(pb, now - addon.rangedCastStart)
-			local progress = elapsed / castDuration
-			local remaining = math.max(0, castDuration - elapsed)
-			addon.UpdateSwingBar(addon.rangedCastBar, progress, remaining)
-			addon.rangedCastFrame:Show()
-		else
-			addon.rangedCastFrame:Hide()
-		end
-	end)
+        if castEnd > 0 and destGUID == addon.playerGUID and pushbackCount < #PUSHBACK then
+            if subevent == "SWING_DAMAGE" or subevent == "SPELL_DAMAGE" or subevent == "RANGE_DAMAGE" or subevent == "ENVIRONMENTAL_DAMAGE" then
+                pushbackCount = pushbackCount + 1
+            end
+        end
 
-	frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-	frame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
-	frame:RegisterEvent("UNIT_SPELLCAST_FAILED")
-	frame:RegisterEvent("UNIT_SPELLCAST_FAILED_QUIET")
-	frame:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
-	frame:RegisterEvent("STOP_AUTOREPEAT_SPELL")
-	frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-	frame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
-	frame:SetScript("OnEvent", function(_, event, ...)
-		local now = GetTime()
+        if sourceGUID ~= addon.playerGUID or subevent ~= "SPELL_CAST_START" then return end
+        if addon.spells.rangedAttack[cleuSpellId] then
+            lastShotDuration = GetShotTime(cleuSpellId)
+            if shootEnd <= now then
+                shootStart = now
+                shootEnd = now + lastShotDuration
+            end
+            ShowRanged()
+        elseif addon.spells.hunterCast[cleuSpellId] then
+            local info = C_Spell.GetSpellInfo(cleuSpellId)
+            local castTimeMs = info and info.castTime or 0
+            local duration = (castTimeMs > 0) and (castTimeMs / 1000) or GetShotTime(cleuSpellId)
+            if not duration or duration == 0 then return end
+            shootEnd = 0
+            retryEnd = 0
+            castStart = now
+            castSpellId = cleuSpellId
+            pushbackCount = (castTimeMs > 0) and 0 or (#PUSHBACK + 1)
+            castEnd = now + duration
+            castBar:SetStatusBarColor(Color.CAST[1], Color.CAST[2], Color.CAST[3])
+            ShowRanged()
+        end
+        return
+    end
 
-		if event == "PLAYER_ENTERING_WORLD" then
-			addon.showRangedBar = UnitRangedDamage("player") > 0
-			addon.UpdateRangedVisibility()
-			return
-		elseif event == "PLAYER_EQUIPMENT_CHANGED" then
-			if (...) ~= RANGED_SLOT then return end
-			addon.showRangedBar = UnitRangedDamage("player") > 0
-			addon.UpdateRangedVisibility()
-			return
-		end
+    -- UNIT_SPELLCAST_* events
+    local unit, _, spellId = ...
+    if unit ~= "player" then return end
 
-		if not addon.showRangedBar then
-			addon.UpdateRangedVisibility()
-			return
-		end
-
-		if event == "STOP_AUTOREPEAT_SPELL" then
-			addon.rangedRetryEnd = 0
-			addon.UpdateRangedVisibility()
-			return
-		end
-
-		if event == "COMBAT_LOG_EVENT_UNFILTERED" then
-			local _, subevent, _, sourceGUID, _, _, _, destGUID, _, _, _, cleuSpellId = CombatLogGetCurrentEventInfo()
-
-			if addon.rangedCastEnd > 0 and destGUID == addon.playerGUID and addon.rangedPushbackCount < #PUSHBACK then
-				if subevent == "SWING_DAMAGE" or subevent == "SPELL_DAMAGE" or subevent == "RANGE_DAMAGE" or subevent == "ENVIRONMENTAL_DAMAGE" then
-					addon.rangedPushbackCount = addon.rangedPushbackCount + 1
-				end
-			end
-
-			if sourceGUID ~= addon.playerGUID or subevent ~= "SPELL_CAST_START" then return end
-			if cfSwingTimer_RangedAttack[cleuSpellId] then
-				addon.rangedLastShotDuration = GetShotTime(cleuSpellId)
-				if addon.rangedShootEnd <= now then
-					addon.rangedShootStart = now
-					addon.rangedShootEnd = now + addon.rangedLastShotDuration
-				end
-			elseif cfSwingTimer_HunterCast[cleuSpellId] then
-				local _, _, _, castTimeMs = GetSpellInfo(cleuSpellId)
-				local dur = (castTimeMs and castTimeMs > 0) and (castTimeMs / 1000) or GetShotTime(cleuSpellId)
-				if not dur or dur == 0 then return end
-				addon.rangedShootEnd = 0
-				addon.rangedRetryEnd = 0
-				addon.rangedCastStart = now
-				addon.rangedCastSpellId = cleuSpellId
-				addon.rangedPushbackCount = (castTimeMs and castTimeMs > 0) and 0 or (#PUSHBACK + 1)
-				addon.rangedCastEnd = now + dur
-				addon.rangedCastBar:SetStatusBarColor(unpack(Color.CAST))
-				addon.UpdateRangedVisibility()
-			end
-			return
-		end
-
-		local unit, _, spellId = ...
-		if unit ~= "player" then return end
-
-		if event == "UNIT_SPELLCAST_SUCCEEDED" then
-			if cfSwingTimer_RangedAttack[spellId] then
-				local rangedSpeed = UnitRangedDamage("player")
-				local reloadTime = cfSwingTimer_RangedAutoAttack[spellId] and (rangedSpeed - addon.rangedLastShotDuration) or rangedSpeed
-				addon.rangedReloadStart = now
-				addon.rangedReloadEnd = now + reloadTime
-				addon.rangedShootEnd = 0
-				addon.SetClipFraction(addon.rangedBar, GetShotTime(AUTO_SHOT) / reloadTime)
-			elseif spellId == addon.rangedCastSpellId then
-				StopCast()
-				addon.UpdateRangedVisibility()
-			end
-		elseif event == "UNIT_SPELLCAST_FAILED" then
-			if cfSwingTimer_RangedAttack[spellId] then
-				addon.rangedShootEnd = 0
-			end
-			if spellId == addon.rangedCastSpellId then
-				StopCast()
-				addon.UpdateRangedVisibility()
-			end
-		elseif event == "UNIT_SPELLCAST_INTERRUPTED" then
-			if spellId == addon.rangedCastSpellId then
-				StopCast()
-				addon.UpdateRangedVisibility()
-			end
-		elseif event == "UNIT_SPELLCAST_FAILED_QUIET" then
-			if cfSwingTimer_RangedAttack[spellId] and addon.rangedCastEnd == 0 then
-				addon.rangedRetryEnd = now + RETRY_DURATION
-			end
-		end
-	end)
-
-	addon.rangedInitialized = true
-	addon.UpdateRangedVisibility()
-end
-
-function addon.initRanged()
-	addon.SetupRanged()
-end
+    if event == "UNIT_SPELLCAST_SUCCEEDED" then
+        if addon.spells.rangedAttack[spellId] then
+            local rangedSpeed = UnitRangedDamage("player")
+            local reloadTime = addon.spells.rangedAutoAttack[spellId] and (rangedSpeed - lastShotDuration) or rangedSpeed
+            reloadStart = now
+            reloadEnd = now + reloadTime
+            shootEnd = 0
+            SetClip(GetShotTime(AUTO_SHOT) / reloadTime)
+            ShowRanged()
+        elseif spellId == castSpellId then
+            StopCast()
+        end
+    elseif event == "UNIT_SPELLCAST_FAILED" then
+        if addon.spells.rangedAttack[spellId] then
+            shootEnd = 0
+        end
+        if spellId == castSpellId then
+            StopCast()
+        end
+    elseif event == "UNIT_SPELLCAST_INTERRUPTED" then
+        if spellId == castSpellId then
+            StopCast()
+        end
+    elseif event == "UNIT_SPELLCAST_FAILED_QUIET" then
+        if addon.spells.rangedAttack[spellId] and castEnd == 0 then
+            retryEnd = now + RETRY_DURATION
+            ShowRanged()
+        end
+    end
+end)

@@ -1,16 +1,12 @@
 ## Interface: 11508
 ## Title: cfSwingTimer
-## Notes: Melee swing timer bars
+## Notes: Melee and ranged swing timer bars
 ## Author: Claude
-## Version: 0.1
-## SavedVariablesPerCharacter: cfSwingTimerDB
-Init.lua
+## Version: 0.2
 Core.lua
-GUI/_Factory.lua
-GUI/Settings.lua
-Features/Abilities.lua
-Features/Melee/Core.lua
-Features/Melee/Paladin.lua
-Features/Melee/Warrior.lua
-Features/Melee/Shaman.lua
+Abilities.lua
+Features/Melee.lua
 Features/Ranged.lua
+Features/Class/Paladin.lua
+Features/Class/Warrior.lua
+Features/Class/Shaman.lua

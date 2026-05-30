@@ -1,5 +1,12 @@
+local _, addon = ...
+
+-- Spell-ID knowledge, kept verbatim from v1 (only re-namespaced off _G and with
+-- Steady Shot removed — spellID 34120 is TBC-only, absent in Classic Era).
+addon.spells = {}
+local spells = addon.spells
+
 -- Warrior
-cfSwingTimer_HeroicStrike = {
+spells.heroicStrike = {
     [78]    = "Heroic Strike (Rank 1)",
     [284]   = "Heroic Strike (Rank 2)",
     [285]   = "Heroic Strike (Rank 3)",
@@ -13,7 +20,7 @@ cfSwingTimer_HeroicStrike = {
     [30324] = "Heroic Strike (Rank 11)", -- TBC
 }
 
-cfSwingTimer_Cleave = {
+spells.cleave = {
     [845]   = "Cleave (Rank 1)",
     [7369]  = "Cleave (Rank 2)",
     [11608] = "Cleave (Rank 3)",
@@ -22,7 +29,7 @@ cfSwingTimer_Cleave = {
     [25231] = "Cleave (Rank 6)", -- TBC
 }
 
-cfSwingTimer_Slam = {
+spells.slam = {
     [1464]  = "Slam (Rank 1)",
     [8820]  = "Slam (Rank 2)",
     [11604] = "Slam (Rank 3)",
@@ -32,7 +39,7 @@ cfSwingTimer_Slam = {
 }
 
 -- Druid
-cfSwingTimer_Maul = {
+local maul = {
     [6807]  = "Maul (Rank 1)",
     [6808]  = "Maul (Rank 2)",
     [6809]  = "Maul (Rank 3)",
@@ -44,7 +51,7 @@ cfSwingTimer_Maul = {
 }
 
 -- Hunter
-cfSwingTimer_RaptorStrike = {
+local raptorStrike = {
     [2973]  = "Raptor Strike (Rank 1)",
     [14260] = "Raptor Strike (Rank 2)",
     [14261] = "Raptor Strike (Rank 3)",
@@ -56,7 +63,7 @@ cfSwingTimer_RaptorStrike = {
     [27014] = "Raptor Strike (Rank 9)", -- TBC
 }
 
-cfSwingTimer_AimedShot = {
+spells.aimedShot = {
     [19434] = "Aimed Shot (Rank 1)",
     [20900] = "Aimed Shot (Rank 2)",
     [20901] = "Aimed Shot (Rank 3)",
@@ -66,7 +73,7 @@ cfSwingTimer_AimedShot = {
     [27065] = "Aimed Shot (Rank 7)", -- TBC
 }
 
-cfSwingTimer_MultiShot = {
+spells.multiShot = {
     [2643]  = "Multi-Shot (Rank 1)",
     [14288] = "Multi-Shot (Rank 2)",
     [14289] = "Multi-Shot (Rank 3)",
@@ -75,33 +82,34 @@ cfSwingTimer_MultiShot = {
     [27021] = "Multi-Shot (Rank 6)", -- TBC
 }
 
-cfSwingTimer_SteadyShot = {
-    [34120] = "Steady Shot", -- TBC
-}
+local function merge(into, from)
+    for id, name in pairs(from) do
+        into[id] = name
+    end
+end
 
--- Melee abilities that replace auto-attack and reset the MH swing timer
-cfSwingTimer_MeleeReplacer = {}
-for id, name in pairs(cfSwingTimer_HeroicStrike) do cfSwingTimer_MeleeReplacer[id] = name end
-for id, name in pairs(cfSwingTimer_Cleave) do cfSwingTimer_MeleeReplacer[id] = name end
-for id, name in pairs(cfSwingTimer_Maul) do cfSwingTimer_MeleeReplacer[id] = name end
-for id, name in pairs(cfSwingTimer_RaptorStrike) do cfSwingTimer_MeleeReplacer[id] = name end
+-- Melee abilities that replace an auto-attack and reset the MH swing timer.
+spells.meleeReplacer = {}
+merge(spells.meleeReplacer, spells.heroicStrike)
+merge(spells.meleeReplacer, spells.cleave)
+merge(spells.meleeReplacer, maul)
+merge(spells.meleeReplacer, raptorStrike)
 
--- Ranged auto-attack spells
-cfSwingTimer_RangedAttack = {
+-- Ranged auto-attack spells.
+spells.rangedAttack = {
     [75]   = "Auto Shot",
     [5019] = "Shoot (Wand)",
     [3018] = "Shoot (Bow/Gun/Crossbow)",
     [2764] = "Throw",
 }
 
--- Subset of RangedAttack that auto-repeats (cooldown = speed - castTime)
-cfSwingTimer_RangedAutoAttack = {
+-- Subset of rangedAttack that auto-repeats (reload = speed - shotTime).
+spells.rangedAutoAttack = {
     [75]   = "Auto Shot",
     [5019] = "Shoot (Wand)",
 }
 
--- Hunter casted shots that block auto-shot during cast
-cfSwingTimer_HunterCast = {}
-for id, name in pairs(cfSwingTimer_AimedShot) do cfSwingTimer_HunterCast[id] = name end
-for id, name in pairs(cfSwingTimer_MultiShot) do cfSwingTimer_HunterCast[id] = name end
-for id, name in pairs(cfSwingTimer_SteadyShot) do cfSwingTimer_HunterCast[id] = name end
+-- Hunter cast shots that block auto-shot during the cast.
+spells.hunterCast = {}
+merge(spells.hunterCast, spells.aimedShot)
+merge(spells.hunterCast, spells.multiShot)
