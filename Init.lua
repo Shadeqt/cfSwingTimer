@@ -99,6 +99,8 @@ function addon.DisableRangedCast()
 end
 
 EventUtil.ContinueOnAddOnLoaded("cfSwingTimer", function()
+	addon.InitSettings()
+
 	if addon.db[addon.KEYS.MAINHAND] or addon.db[addon.KEYS.OFFHAND] then
 		addon.EnsureMelee()
 		addon.UpdateMeleeVisibility()

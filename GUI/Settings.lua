@@ -1,24 +1,40 @@
 local addon = cfSwingTimer
 local K = addon.KEYS
-local factory = addon.GUI
+local F = addon.GUI
 
-local panel = CreateFrame("Frame", "cfSwingTimerSettingsPanel")
-panel.name = "cfSwingTimer"
-panel:Hide()
+function addon.InitSettings()
+	local panel = CreateFrame("Frame", "cfSwingTimerSettingsPanel")
+	panel.name = "cfSwingTimer"
+	panel:Hide()
 
-local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-title:SetPoint("TOPLEFT", 16, -16)
-title:SetText("cfSwingTimer")
+	local title = F.Title(panel, "cfSwingTimer")
 
-local mainhand = factory.CreateCheckbox(panel, title, "Main Hand", K.MAINHAND, addon.EnableMainhand, addon.DisableMainhand)
-local offhand = factory.CreateCheckbox(panel, mainhand, "Off Hand", K.OFFHAND, addon.EnableOffhand, addon.DisableOffhand)
-local ranged = factory.CreateCheckbox(panel, offhand, "Ranged", K.RANGED, addon.EnableRanged, addon.DisableRanged)
-local rangedCast = factory.CreateCheckbox(panel, ranged, "Ranged Cast", K.RANGED_CAST, addon.EnableRangedCast, addon.DisableRangedCast, ranged)
-local paladinTwist = factory.CreateReloadCheckbox(panel, mainhand, "Paladin Twist", K.PALADIN_TWIST, mainhand, 260)
-local warriorQueue = factory.CreateReloadCheckbox(panel, paladinTwist, "Warrior Queue", K.WARRIOR_QUEUE, mainhand)
-local shamanHalf = factory.CreateReloadCheckbox(panel, warriorQueue, "Shaman Half", K.SHAMAN_HALF, mainhand)
+	local mainhand = F.Checkbox(panel, title, "Main Hand", K.MAINHAND, {
+		onEnable = addon.EnableMainhand, onDisable = addon.DisableMainhand,
+	})
+	local offhand = F.Checkbox(panel, mainhand, "Off Hand", K.OFFHAND, {
+		onEnable = addon.EnableOffhand, onDisable = addon.DisableOffhand,
+	})
+	local ranged = F.Checkbox(panel, offhand, "Ranged", K.RANGED, {
+		onEnable = addon.EnableRanged, onDisable = addon.DisableRanged,
+	})
+	F.Checkbox(panel, ranged, "Ranged Cast", K.RANGED_CAST, {
+		dependency = ranged,
+		onEnable = addon.EnableRangedCast, onDisable = addon.DisableRangedCast,
+	})
 
-local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
-Settings.RegisterAddOnCategory(category)
+	local paladinTwist = F.Checkbox(panel, mainhand, "Paladin Twist", K.PALADIN_TWIST, {
+		dependency = mainhand, requireReload = true, col2 = 260,
+	})
+	local warriorQueue = F.Checkbox(panel, paladinTwist, "Warrior Queue", K.WARRIOR_QUEUE, {
+		dependency = mainhand, requireReload = true,
+	})
+	F.Checkbox(panel, warriorQueue, "Shaman Half", K.SHAMAN_HALF, {
+		dependency = mainhand, requireReload = true,
+	})
 
-panel:SetScript("OnShow", factory.MakeSettingsPanelDraggable)
+	local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
+	Settings.RegisterAddOnCategory(category)
+
+	panel:SetScript("OnShow", F.MakeSettingsPanelDraggable)
+end

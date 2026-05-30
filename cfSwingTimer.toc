@@ -6,11 +6,11 @@
 ## SavedVariablesPerCharacter: cfSwingTimerDB
 Init.lua
 Core.lua
-Abilities.lua
-Melee.lua
-MeleePaladin.lua
-MeleeWarrior.lua
-MeleeShaman.lua
-Ranged.lua
 GUI/_Factory.lua
 GUI/Settings.lua
+Features/Abilities.lua
+Features/Melee/Core.lua
+Features/Melee/Paladin.lua
+Features/Melee/Warrior.lua
+Features/Melee/Shaman.lua
+Features/Ranged.lua
