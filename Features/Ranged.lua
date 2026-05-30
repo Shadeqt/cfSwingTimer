@@ -118,7 +118,7 @@ rangedBar:SetScript("OnUpdate", function()
     elseif retryEnd > now then
         clipZone:Hide()
         rangedBar:SetStatusBarColor(Color.RETRY[1], Color.RETRY[2], Color.RETRY[3])
-        addon.UpdateSwingBar(rangedBar, 1 - (retryEnd - now) / RETRY_DURATION, retryEnd - now)
+        addon.UpdateSwingBar(rangedBar, (retryEnd - now) / RETRY_DURATION, retryEnd - now)
     else
         clipZone:Hide()
         addon.UpdateSwingBar(rangedBar, 0, 0)
