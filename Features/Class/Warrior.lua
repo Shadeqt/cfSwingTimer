@@ -8,10 +8,11 @@ if select(2, UnitClass("player")) ~= "WARRIOR" then return end
 local bar = addon.mainHandBar
 if not bar then return end
 
-local function classColor(token)
-    local c = RAID_CLASS_COLORS[token]
-    return c.r, c.g, c.b
-end
+-- Literal palette picks (not RAID_CLASS_COLORS: the Era default Shaman color is
+-- pink, not blue). Idle matches the MH bar's default blue.
+local HEROIC_STRIKE_COLOR = { 1.00, 0.96, 0.41 } -- yellow
+local CLEAVE_COLOR        = { 0.00, 1.00, 0.60 } -- green
+local IDLE_COLOR          = { 0.00, 0.44, 0.87 } -- blue
 
 local queuedSpellId
 
@@ -19,11 +20,11 @@ local queuedSpellId
 -- across a live retexture (and restores the idle color on dequeue).
 local function ApplyColor()
     if queuedSpellId and addon.spells.heroicStrike[queuedSpellId] then
-        bar.color = { classColor("ROGUE") }      -- Heroic Strike
+        bar.color = HEROIC_STRIKE_COLOR
     elseif queuedSpellId and addon.spells.cleave[queuedSpellId] then
-        bar.color = { 0.00, 1.00, 0.60 }          -- Cleave (Monk green — no Era class entry)
+        bar.color = CLEAVE_COLOR
     else
-        bar.color = { classColor("SHAMAN") }      -- idle / MH default
+        bar.color = IDLE_COLOR
     end
     bar:SetStatusBarColor(bar.color[1], bar.color[2], bar.color[3])
 end
