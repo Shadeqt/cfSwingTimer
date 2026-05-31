@@ -15,8 +15,8 @@ local function CreateMarker(r, g, b)
     return marker
 end
 
-local twistMarker = CreateMarker(0.70, 0.70, 0.70) -- seal twist window
-local gcdMarker = CreateMarker(1.00, 0.00, 0.00)   -- twist + GCD
+local twistMarker = CreateMarker(addon.CastbarColor("nonInterruptibleColor")) -- seal twist window (gray)
+local gcdMarker = CreateMarker(addon.CastbarColor("failedCastColor"))         -- twist + GCD (red)
 
 local function UpdateMarkers()
     local speed = UnitAttackSpeed("player") or 0

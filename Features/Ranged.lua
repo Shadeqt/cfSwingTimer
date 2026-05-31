@@ -9,13 +9,19 @@ local AUTO_SHOT = 75
 local RETRY_DURATION = 0.5
 local PUSHBACK = { 1.0, 1.8, 2.4, 2.8, 3.0 }
 
--- Ranged owns its colors (no Era surface for these): DH purple has no Era class
--- entry, the rest are fixed castbar-style literals.
+-- SHOOT/RELOAD are class colors from RAID_CLASS_COLORS (Demon Hunter purple, Priest
+-- white). RETRY/CAST are casting-bar colors sourced live from CastingBarFrame
+-- (failed red, casting orange). All snapshotted at load -- none of these tracks
+-- cfClassColors, so no need to re-resolve.
+local function classRGB(token)
+    local c = RAID_CLASS_COLORS[token]
+    return { c.r, c.g, c.b }
+end
 local Color = {
-    SHOOT  = { 0.64, 0.19, 0.79 },
-    RELOAD = { 1.00, 1.00, 1.00 },
-    RETRY  = { 1.00, 0.00, 0.00 },
-    CAST   = { 1.00, 0.70, 0.00 },
+    SHOOT  = classRGB("DEMONHUNTER"),
+    RELOAD = classRGB("PRIEST"),
+    RETRY  = { addon.CastbarColor("failedCastColor") },
+    CAST   = { addon.CastbarColor("startCastColor") },
 }
 
 -- State
@@ -71,9 +77,11 @@ rangedBar:Hide()
 -- Clip zone: a band sized to a shot's cast time, on the reload bar. Firing a shot
 -- inside it delays the next auto-shot — the "don't clip" warning. Ranged-only.
 local clipZone = rangedBar:CreateTexture(nil, "OVERLAY")
-clipZone:SetColorTexture(1, 0, 0, 0.3)
-clipZone:SetPoint("TOPRIGHT", rangedBar, "TOPRIGHT", 0, 0)
-clipZone:SetPoint("BOTTOMRIGHT", rangedBar, "BOTTOMRIGHT", 0, 0)
+clipZone:SetColorTexture(Color.RETRY[1], Color.RETRY[2], Color.RETRY[3], 0.25) -- failed red + our alpha
+-- Anchored to the LEFT: the reload bar depletes right-to-left, so the clip
+-- window (the final shotTime before the auto-shot fires) sits at the left edge.
+clipZone:SetPoint("TOPLEFT", rangedBar, "TOPLEFT", 0, 0)
+clipZone:SetPoint("BOTTOMLEFT", rangedBar, "BOTTOMLEFT", 0, 0)
 clipZone:Hide()
 
 local function SetClip(fraction)
@@ -82,9 +90,14 @@ local function SetClip(fraction)
 end
 
 local castBar = addon.CreateSwingBar(rangedBar)
-castBar:SetPoint("BOTTOM", rangedBar, "TOP", 0, addon.BAR_SPACING)
+castBar:SetPoint("BOTTOM", rangedBar, "TOP", 0, addon.BAR_HEIGHT)
 castBar.color = Color.CAST
 castBar:Hide()
+
+-- Exposed for the /cfst test harness (melee bars are already on addon).
+addon.rangedBar = rangedBar
+addon.castBar = castBar
+addon.SetClip = SetClip
 
 local function ShowRanged()
     if UnitRangedDamage("player") > 0 then

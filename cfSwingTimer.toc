@@ -10,3 +10,4 @@ Features/Ranged.lua
 Features/Class/Paladin.lua
 Features/Class/Warrior.lua
 Features/Class/Shaman.lua
+Features/Test.lua

@@ -6,11 +6,10 @@ local SWING_DAMAGE_OFFHAND_INDEX = 21
 local SWING_MISSED_OFFHAND_INDEX = 13
 local EXTRA_ATTACKS_AMOUNT_INDEX = 15
 
--- Fixed palette picks as literals. NOT RAID_CLASS_COLORS: in Classic Era the
--- default Shaman color is pink (only cfClassColors makes it blue), so reading it
--- live mis-colors the MH bar and breaks standalone use.
-local MH_COLOR = { 0.00, 0.44, 0.87 } -- blue
-local OH_COLOR = { 0.25, 0.78, 0.92 } -- cyan
+-- Bar colors are class tokens, resolved live from RAID_CLASS_COLORS in OnShow:
+-- MH = Shaman blue, OH = Mage cyan. NOTE: the Era default Shaman color is pink;
+-- cfClassColors patches RAID_CLASS_COLORS.SHAMAN to blue, so the MH bar relies on
+-- cfClassColors being loaded (it patches at file scope, before us alphabetically).
 
 -- Shared swing state on the namespace (class plugins read mhSwingStart / mhSpeed).
 addon.mhSwingStart = 0
@@ -24,15 +23,13 @@ addon.extraAttacks = 0
 -- while dual-wielding. Both are hidden until the first swing of a combat.
 local mainHandBar = addon.CreateSwingBar(UIParent)
 mainHandBar:SetPoint("CENTER", 0, -150)
-mainHandBar.color = MH_COLOR
-mainHandBar:SetStatusBarColor(mainHandBar.color[1], mainHandBar.color[2], mainHandBar.color[3])
+mainHandBar.colorToken = "SHAMAN"
 mainHandBar:Hide()
 addon.mainHandBar = mainHandBar
 
 local offHandBar = addon.CreateSwingBar(mainHandBar)
-offHandBar:SetPoint("TOP", mainHandBar, "BOTTOM", 0, -addon.BAR_SPACING)
-offHandBar.color = OH_COLOR
-offHandBar:SetStatusBarColor(offHandBar.color[1], offHandBar.color[2], offHandBar.color[3])
+offHandBar:SetPoint("TOP", mainHandBar, "BOTTOM", 0, -addon.BAR_HEIGHT)
+offHandBar.colorToken = "MAGE"
 offHandBar:Hide()
 addon.offHandBar = offHandBar
 

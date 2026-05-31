@@ -11,7 +11,7 @@ if not mainHandBar then return end
 -- Inlined marker helper (not shared, so this file is independently removable).
 local function CreateHalfMarker(bar)
     local marker = bar:CreateTexture(nil, "OVERLAY")
-    marker:SetColorTexture(0.70, 0.70, 0.70)
+    marker:SetColorTexture(addon.CastbarColor("nonInterruptibleColor")) -- gray
     marker:SetSize(2, bar:GetHeight())
     marker:SetPoint("CENTER", bar, "LEFT", 0.5 * bar:GetWidth(), 0)
     return marker
