@@ -59,4 +59,6 @@ watcher:SetScript("OnUpdate", function()
     end
 end)
 
-ApplyColor()
+-- No initial ApplyColor() here on purpose: the idle color is Melee's "SHAMAN"
+-- colorToken, applied live in OnShow. Reading the color at file scope would be the
+-- one load-time RAID_CLASS_COLORS read, which breaks if cfClassColors loads later.
