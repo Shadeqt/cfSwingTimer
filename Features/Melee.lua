@@ -51,6 +51,12 @@ mainHandBar:SetScript("OnUpdate", function()
     if UpdateBar(offHandBar, addon.offHandSwingStart, addon.offHandSpeed, now) then
         addon.offHandSwingStart = 0
     end
+    -- Hide once out of combat AND both hands are ready (no swing in flight), so a
+    -- swing that's still running when combat ends isn't cut off mid-flight.
+    if not UnitAffectingCombat("player") and addon.mhSwingStart == 0 and addon.offHandSwingStart == 0 then
+        addon.extraAttacks = 0
+        mainHandBar:Hide()
+    end
 end)
 
 local function RefreshSpeeds()
@@ -76,7 +82,6 @@ events:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 events:RegisterEvent("UNIT_ATTACK_SPEED")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_ENTER_COMBAT")
-events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 events:SetScript("OnEvent", function(_, event, arg1)
     local now = GetTime()
@@ -106,12 +111,6 @@ events:SetScript("OnEvent", function(_, event, arg1)
                 addon.offHandSwingStart = now - halfSpeed
             end
         end
-        return
-    elseif event == "PLAYER_REGEN_ENABLED" then
-        addon.mhSwingStart = 0
-        addon.offHandSwingStart = 0
-        addon.extraAttacks = 0
-        mainHandBar:Hide()
         return
     elseif event == "PLAYER_EQUIPMENT_CHANGED" then
         if arg1 == 16 then

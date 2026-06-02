@@ -146,6 +146,14 @@ rangedBar:SetScript("OnUpdate", function()
     else
         castBar:Hide()
     end
+
+    -- Hide once out of combat AND shot/reload/retry/cast are all done, so a shot
+    -- or reload still running when combat ends isn't cut off mid-flight.
+    if not UnitAffectingCombat("player") and shootEnd <= now and reloadEnd <= now and retryEnd <= now and castEnd == 0 then
+        ClearShots()
+        StopCast()
+        rangedBar:Hide()
+    end
 end)
 
 local events = CreateFrame("Frame")
@@ -156,18 +164,12 @@ events:RegisterEvent("UNIT_SPELLCAST_FAILED_QUIET")
 events:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
 events:RegisterEvent("STOP_AUTOREPEAT_SPELL")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
-events:RegisterEvent("PLAYER_REGEN_ENABLED")
 events:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 events:SetScript("OnEvent", function(_, event, ...)
     local now = GetTime()
 
     if event == "PLAYER_ENTERING_WORLD" then
         addon.playerGUID = UnitGUID("player")
-        return
-    elseif event == "PLAYER_REGEN_ENABLED" then
-        ClearShots()
-        StopCast()
-        rangedBar:Hide()
         return
     elseif event == "PLAYER_EQUIPMENT_CHANGED" then
         local slot = ...
