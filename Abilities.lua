@@ -39,7 +39,7 @@ spells.slam = {
 }
 
 -- Druid
-local maul = {
+spells.maul = {
     [6807]  = "Maul (Rank 1)",
     [6808]  = "Maul (Rank 2)",
     [6809]  = "Maul (Rank 3)",
@@ -51,7 +51,7 @@ local maul = {
 }
 
 -- Hunter
-local raptorStrike = {
+spells.raptorStrike = {
     [2973]  = "Raptor Strike (Rank 1)",
     [14260] = "Raptor Strike (Rank 2)",
     [14261] = "Raptor Strike (Rank 3)",
@@ -62,6 +62,7 @@ local raptorStrike = {
     [14266] = "Raptor Strike (Rank 8)",
     [27014] = "Raptor Strike (Rank 9)", -- TBC
 }
+local raptorStrike = spells.raptorStrike
 
 spells.aimedShot = {
     [19434] = "Aimed Shot (Rank 1)",
@@ -92,7 +93,7 @@ end
 spells.meleeReplacer = {}
 merge(spells.meleeReplacer, spells.heroicStrike)
 merge(spells.meleeReplacer, spells.cleave)
-merge(spells.meleeReplacer, maul)
+merge(spells.meleeReplacer, spells.maul)
 merge(spells.meleeReplacer, raptorStrike)
 
 -- Ranged auto-attack spells.

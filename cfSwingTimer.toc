@@ -7,6 +7,8 @@ Core.lua
 Abilities.lua
 Features/Melee.lua
 Features/Ranged.lua
+Features/Class/Druid.lua
+Features/Class/Hunter.lua
 Features/Class/Paladin.lua
 Features/Class/Warrior.lua
 Features/Class/Shaman.lua

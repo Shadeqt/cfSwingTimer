@@ -44,7 +44,7 @@ function addon.CreateSwingBar(parent)
     border:SetBackdrop({
         --edgeFile = "Interface\\FriendsFrame\\UI-Toast-Border",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        edgeSize = 8.5,
+        edgeSize = 10,
     })
     bar.border = border
 

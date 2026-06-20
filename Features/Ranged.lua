@@ -9,7 +9,7 @@ local AUTO_SHOT = 75
 local RETRY_DURATION = 0.5
 local PUSHBACK = { 1.0, 1.8, 2.4, 2.8, 3.0 }
 
--- SHOOT/RELOAD are class colors from RAID_CLASS_COLORS (Demon Hunter purple, Priest
+-- SHOOT/RELOAD are class colors from RAID_CLASS_COLORS (Hunter green, Priest
 -- white). RETRY/CAST are casting-bar colors sourced live from CastingBarFrame
 -- (failed red, casting orange). All snapshotted at load -- none of these tracks
 -- cfClassColors, so no need to re-resolve.
@@ -18,7 +18,7 @@ local function classRGB(token)
     return { c.r, c.g, c.b }
 end
 local Color = {
-    SHOOT  = classRGB("DEMONHUNTER"),
+    SHOOT  = classRGB("HUNTER"),
     RELOAD = classRGB("PRIEST"),
     RETRY  = { addon.CastbarColor("failedCastColor") },
     CAST   = { addon.CastbarColor("startCastColor") },
