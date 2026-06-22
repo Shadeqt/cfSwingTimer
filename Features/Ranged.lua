@@ -117,7 +117,10 @@ end
 rangedBar:SetScript("OnUpdate", function()
     local now = GetTime()
 
-    if GetUnitSpeed("player") > 0 then
+    -- Moving OR being airborne cancels the in-progress auto-shot aim: GetUnitSpeed catches ground
+    -- movement, IsFalling catches a jump from a standstill (horizontal speed is still 0 there, so the
+    -- speed check alone misses it).
+    if GetUnitSpeed("player") > 0 or IsFalling() then
         shootEnd = 0
     end
 
