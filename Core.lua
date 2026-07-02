@@ -8,12 +8,16 @@ local BAR_WIDTH = CastingBarFrame:GetWidth()
 local BAR_HEIGHT = CastingBarFrame:GetHeight()
 local SPARK_SIZE = CastingBarFrame.Spark:GetWidth()
 
+-- Hot-path globals localized to upvalues (UpdateSwingBar runs every frame, per bar).
+local string_format = string.format
+local floor = math.floor
+
 addon.BAR_WIDTH = BAR_WIDTH
 addon.BAR_HEIGHT = BAR_HEIGHT
 addon.playerGUID = UnitGUID("player")
 
 -- The single StatusBar builder, shared by melee (MH/OH) and ranged (base + cast).
--- Bars are transient (hidden out of combat, shown on first swing/shot), so texture
+-- Bars are transient (hidden while auto-attack/shot is off and idle, shown on a swing/shot), so texture
 -- and border color are read off the player frame in OnShow rather than via a
 -- persistent hook. SetStatusBarTexture clears the bar color, so OnShow re-applies
 -- it via ApplyBarColor right after (the SWT-B06 fix); a bar with neither colorToken
@@ -55,14 +59,16 @@ function addon.CreateSwingBar(parent)
     bar:SetScript("OnShow", function(self)
         self:SetStatusBarTexture(PlayerFrameHealthBar:GetStatusBarTexture():GetTexture())
         addon.ApplyBarColor(self)
-        self.border:SetBackdropBorderColor(PlayerFrameTexture:GetVertexColor())
+        -- Follow cfDarkMode's chrome darkness on our own border via the public API. No cfDarkMode ->
+        -- leave the default border (correct: nothing to match).
+        if cfDarkMode then cfDarkMode.Darken(self.border) end
     end)
 
     return bar
 end
 
 -- Resolve and apply a bar's color. A bar carries either a class token in
--- bar.colorToken (read LIVE from RAID_CLASS_COLORS, so it tracks cfClassColors'
+-- bar.colorToken (read LIVE from RAID_CLASS_COLORS, so it tracks cfFrames'
 -- Shaman-blue fix instead of the Era pink default) or a literal RGB array in
 -- bar.color (the castbar-style colors that aren't class colors). SetStatusBarTexture
 -- wipes the bar color, so OnShow re-applies via this (the SWT-B06 fix).
@@ -85,9 +91,67 @@ function addon.CastbarColor(field)
     return c.r, c.g, c.b
 end
 
+-- Queue highlight: recolor a bar while an on-next-swing ability is queued. Warrior
+-- (Heroic Strike / Cleave), Hunter (Raptor Strike), and Druid (Maul) all share this
+-- exact pattern, so it lives here once. `rules` is an ORDERED list of
+-- { set = <spellId set>, token = <class color token> }; the first matching rule wins,
+-- so precedence (e.g. Heroic Strike over Cleave) is just list order. `idleToken` is the
+-- bar's default color when nothing is queued. Returns an OnSent(spellId) to call from a
+-- UNIT_SPELLCAST_SENT handler.
+--
+-- The dequeue watch (C_Spell.IsCurrentSpell has no "dequeued" event, so it must be
+-- polled) is armed only while a spell is queued: the watcher frame is hidden the rest of
+-- the time, so its OnUpdate doesn't tick. No color is applied at load -- the idle color
+-- is owned by the driver bar's OnShow, and a load-time RAID_CLASS_COLORS read would miss
+-- cfFrames' later Shaman-blue patch.
+function addon.MakeQueueHighlight(bar, rules, idleToken)
+    local queuedSpellId
+
+    local function apply()
+        bar.colorToken = idleToken
+        if queuedSpellId then
+            for _, rule in ipairs(rules) do
+                if rule.set[queuedSpellId] then
+                    bar.colorToken = rule.token
+                    break
+                end
+            end
+        end
+        addon.ApplyBarColor(bar)
+    end
+
+    local watcher = CreateFrame("Frame")
+    watcher:Hide() -- OnUpdate ticks only while shown; shown only while a spell is queued
+    watcher:SetScript("OnUpdate", function(self)
+        if not C_Spell.IsCurrentSpell(queuedSpellId) then
+            queuedSpellId = nil
+            self:Hide()
+            apply()
+        end
+    end)
+
+    return function(spellId)
+        for _, rule in ipairs(rules) do
+            if rule.set[spellId] then
+                queuedSpellId = spellId
+                apply()
+                watcher:Show()
+                return
+            end
+        end
+    end
+end
+
 -- SetValue + spark + remaining-time text, identical for every bar.
 function addon.UpdateSwingBar(bar, progress, remaining)
     bar:SetValue(progress)
     bar.spark:SetShown(remaining > 0)
-    bar.text:SetText(remaining > 0 and string.format("%.1f", remaining) or "")
+    -- The time text only changes ~10x/sec, but OnUpdate runs at full framerate. Skip the
+    -- string.format allocation + SetText on the frames where the displayed tenth is
+    -- unchanged (the common case), cutting per-frame garbage during sustained combat.
+    local tenths = remaining > 0 and floor(remaining * 10) or -1
+    if tenths ~= bar.textTenths then
+        bar.textTenths = tenths
+        bar.text:SetText(remaining > 0 and string_format("%.1f", remaining) or "")
+    end
 end

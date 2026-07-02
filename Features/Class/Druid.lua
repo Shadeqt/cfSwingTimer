@@ -24,7 +24,7 @@ end
 -- Suppress by wrapping the bar's own Show: Melee's StartSwing calls mainHandBar:Show()
 -- on every swing, so reactively Hide()ing would just flip back a frame later. Making Show
 -- a no-op while in Cat Form keeps the bar down with no flicker and no change to Melee.lua;
--- Hide() is untouched, so Melee's out-of-combat auto-hide still works. Leaving the form
+-- Hide() is untouched, so Melee's auto-attack-off auto-hide still works. Leaving the form
 -- restores Show, and the bar reappears on the next swing as usual.
 local suppressed = false
 local Show = bar.Show
@@ -41,36 +41,16 @@ events:SetScript("OnEvent", function()
     if suppressed then bar:Hide() end  -- drop any bar still in flight from before the shift
 end)
 
--- Queue highlight for Maul, mirroring Warrior's Heroic Strike: Maul is the Bear-Form
--- on-next-swing ability, so the same UNIT_SPELLCAST_SENT + IsCurrentSpell pattern works.
--- Recolor the MH bar Rogue yellow while Maul is queued; idle is the bar's default
--- "SHAMAN" colorToken. Only Bear queues Maul, so this never collides with Cat suppression.
-local queuedSpellId
-
-local function ApplyColor()
-    if queuedSpellId and addon.spells.maul[queuedSpellId] then
-        bar.colorToken = "ROGUE"
-    else
-        bar.colorToken = "SHAMAN"
-    end
-    addon.ApplyBarColor(bar)
-end
+-- Queue highlight for Maul (the Bear-Form on-next-swing ability), via Core's shared
+-- queue-highlight helper: recolor the MH bar Rogue yellow while Maul is queued; idle is
+-- the bar's default "SHAMAN" colorToken. Only Bear queues Maul, so this never collides
+-- with Cat suppression above.
+local OnSent = addon.MakeQueueHighlight(bar, {
+    { set = addon.spells.maul, token = "ROGUE" },
+}, "SHAMAN")
 
 local castEvents = CreateFrame("Frame")
 castEvents:RegisterEvent("UNIT_SPELLCAST_SENT")
 castEvents:SetScript("OnEvent", function(_, _, unit, _, _, spellId)
-    if unit == "player" and addon.spells.maul[spellId] then
-        queuedSpellId = spellId
-        ApplyColor()
-    end
-end)
-
--- Clear the highlight once the queued Maul is no longer current. Cheap: the body only
--- runs work while something is queued.
-local watcher = CreateFrame("Frame")
-watcher:SetScript("OnUpdate", function()
-    if queuedSpellId and not C_Spell.IsCurrentSpell(queuedSpellId) then
-        queuedSpellId = nil
-        ApplyColor()
-    end
+    if unit == "player" then OnSent(spellId) end
 end)

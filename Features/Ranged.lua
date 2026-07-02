@@ -11,8 +11,8 @@ local PUSHBACK = { 1.0, 1.8, 2.4, 2.8, 3.0 }
 
 -- SHOOT/RELOAD are class colors from RAID_CLASS_COLORS (Hunter green, Priest
 -- white). RETRY/CAST are casting-bar colors sourced live from CastingBarFrame
--- (failed red, casting orange). All snapshotted at load -- none of these tracks
--- cfClassColors, so no need to re-resolve.
+-- (failed red, casting orange). All snapshotted at load -- none of these is the
+-- Shaman token cfFrames patches, so no need to re-resolve.
 local function classRGB(token)
     local c = RAID_CLASS_COLORS[token]
     return { c.r, c.g, c.b }
@@ -31,6 +31,10 @@ local retryEnd = 0
 local lastShotDuration = 0
 local castStart, castEnd, castSpellId = 0, 0, 0
 local pushbackCount = 0
+-- Auto-shot toggle state (START_AUTOREPEAT_SPELL / STOP_AUTOREPEAT_SPELL). Visibility is
+-- keyed on this, not the combat flag: shown on a shot start, hidden once auto-shot is
+-- off AND nothing (shot/reload/retry/cast) is still in flight.
+local autoShotOn = false
 
 -- Tooltip scanner: the only way to read base (unhasted) weapon speed in Era (no
 -- data API; C_TooltipInfo item getters are Retail-only). Locale-safe: find the
@@ -69,7 +73,8 @@ local function GetShotTime(spellId)
 end
 
 -- The base ranged bar is the driver (OnUpdate). The cast bar is parented above it
--- and shown only during a cast. Both hidden until the first ranged action.
+-- and shown only during a cast. Both are hidden until the first shot starts, and hide
+-- again once auto-shot is off and nothing is in flight.
 local rangedBar = addon.CreateSwingBar(UIParent)
 rangedBar:SetPoint("CENTER", 0, -120)
 rangedBar:Hide()
@@ -150,9 +155,9 @@ rangedBar:SetScript("OnUpdate", function()
         castBar:Hide()
     end
 
-    -- Hide once out of combat AND shot/reload/retry/cast are all done, so a shot
-    -- or reload still running when combat ends isn't cut off mid-flight.
-    if not UnitAffectingCombat("player") and shootEnd <= now and reloadEnd <= now and retryEnd <= now and castEnd == 0 then
+    -- Hide once auto-shot is off AND shot/reload/retry/cast are all done, so a shot
+    -- or reload still running when auto-shot stops isn't cut off mid-flight.
+    if not autoShotOn and shootEnd <= now and reloadEnd <= now and retryEnd <= now and castEnd == 0 then
         ClearShots()
         StopCast()
         rangedBar:Hide()
@@ -165,12 +170,11 @@ events:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
 events:RegisterEvent("UNIT_SPELLCAST_FAILED")
 events:RegisterEvent("UNIT_SPELLCAST_FAILED_QUIET")
 events:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
+events:RegisterEvent("START_AUTOREPEAT_SPELL")
 events:RegisterEvent("STOP_AUTOREPEAT_SPELL")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 events:SetScript("OnEvent", function(_, event, ...)
-    local now = GetTime()
-
     if event == "PLAYER_ENTERING_WORLD" then
         addon.playerGUID = UnitGUID("player")
         return
@@ -182,10 +186,21 @@ events:SetScript("OnEvent", function(_, event, ...)
             rangedBar:Hide()
         end
         return
+    elseif event == "START_AUTOREPEAT_SPELL" then
+        -- Auto-shot toggled on. Visibility is driven by shot starts, so we don't show
+        -- here -- the flag just keeps the bar up across the reload gap between shots.
+        autoShotOn = true
+        return
     elseif event == "STOP_AUTOREPEAT_SPELL" then
+        -- Auto-shot toggled off. OnUpdate hides once nothing is in flight.
+        autoShotOn = false
         retryEnd = 0
         return
     end
+
+    -- Past here only CLEU and UNIT_SPELLCAST_* remain, both of which need `now`; the
+    -- early-return events above don't, so we don't call GetTime on every such event.
+    local now = GetTime()
 
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
         local _, subevent, _, sourceGUID, _, _, _, destGUID, _, _, _, cleuSpellId = CombatLogGetCurrentEventInfo()
@@ -203,6 +218,11 @@ events:SetScript("OnEvent", function(_, event, ...)
                 shootStart = now
                 shootEnd = now + lastShotDuration
             end
+            -- An auto-repeating shot means auto-shot is on. Setting this here (not only from
+            -- START_AUTOREPEAT_SPELL) self-heals visibility after a /reload mid-combat, where
+            -- that edge doesn't re-fire. Guard to rangedAutoAttack so a one-off Throw/Shoot
+            -- doesn't pin the bar shown (no STOP event would follow to clear it).
+            if addon.spells.rangedAutoAttack[cleuSpellId] then autoShotOn = true end
             ShowRanged()
         elseif addon.spells.hunterCast[cleuSpellId] then
             local info = C_Spell.GetSpellInfo(cleuSpellId)

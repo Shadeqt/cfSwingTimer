@@ -11,7 +11,7 @@ if not bar then return end
 local function CreateMarker(r, g, b)
     local marker = bar:CreateTexture(nil, "OVERLAY")
     marker:SetColorTexture(r, g, b)
-    marker:SetSize(2, bar:GetHeight())
+    marker:SetSize(2, addon.BAR_HEIGHT)
     return marker
 end
 
@@ -25,7 +25,7 @@ local function UpdateMarkers()
         gcdMarker:Hide()
         return
     end
-    local width = bar:GetWidth()
+    local width = addon.BAR_WIDTH
     twistMarker:ClearAllPoints()
     twistMarker:SetPoint("CENTER", bar, "LEFT", (1 - 0.4 / speed) * width, 0)
     twistMarker:Show()
