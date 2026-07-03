@@ -3,7 +3,9 @@
 ## Notes: Melee and ranged swing timer bars
 ## Author: Claude
 ## Version: 0.3
+## SavedVariablesPerCharacter: cfSwingTimerDB
 Core.lua
+Init.lua
 Abilities.lua
 Features/Melee.lua
 Features/Ranged.lua
@@ -13,3 +15,4 @@ Features/Class/Paladin.lua
 Features/Class/Warrior.lua
 Features/Class/Shaman.lua
 Features/Test.lua
+Settings.lua
